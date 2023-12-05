@@ -24,6 +24,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -136,4 +137,20 @@ func (api *AdminAPI) ImportChain(file string) (bool, error) {
 		blocks = blocks[:0]
 	}
 	return true, nil
+}
+
+func (api *AdminAPI) AddBuilder(builder common.Address, url string) error {
+	return api.eth.APIBackend.AddBuilder(builder, url)
+}
+
+func (api *AdminAPI) RemoveBuilder(builder common.Address) error {
+	return api.eth.APIBackend.RemoveBuilder(builder)
+}
+
+func (api *AdminAPI) StartMEV() error {
+	return api.eth.APIBackend.StartMEV()
+}
+
+func (api *AdminAPI) StopMEV() error {
+	return api.eth.APIBackend.StopMEV()
 }

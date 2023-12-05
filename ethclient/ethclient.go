@@ -679,6 +679,11 @@ func (ec *Client) SendTransactionConditional(ctx context.Context, tx *types.Tran
 	return ec.c.CallContext(ctx, nil, "eth_sendRawTransactionConditional", hexutil.Encode(data), opts)
 }
 
+// ReportIssue sends a issue
+func (ec *Client) ReportIssue(ctx context.Context, args *types.BidIssue) error {
+	return ec.c.CallContext(ctx, nil, "mev_reportIssue", args)
+}
+
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
 		return "latest"

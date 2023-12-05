@@ -40,6 +40,8 @@ import (
 // Backend interface provides the common API services (that are provided by
 // both full and light clients) with access to necessary functions.
 type Backend interface {
+	MevBackend
+
 	// General Ethereum API
 	SyncProgress() ethereum.SyncProgress
 
@@ -103,6 +105,17 @@ type Backend interface {
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
 }
 
+type MevBackend interface {
+	MevRunning() bool
+	StartMEV() error
+	StopMEV() error
+
+	AddBuilder(builder common.Address, builderUrl string) error
+	RemoveBuilder(builder common.Address) error
+
+	BidBlock(ctx context.Context, bid *types.Bid) error
+}
+
 func GetAPIs(apiBackend Backend) []rpc.API {
 	nonceLock := new(AddrLocker)
 	return []rpc.API{
@@ -127,6 +140,10 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "personal",
 			Service:   NewPersonalAccountAPI(apiBackend, nonceLock),
+		}, {
+			Namespace: "mev",
+			Service:   NewMevAPI(apiBackend),
+			Public:    false,
 		},
 	}
 }

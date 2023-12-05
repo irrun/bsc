@@ -432,3 +432,27 @@ func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*core.Message, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
 }
+
+func (b *EthAPIBackend) MevRunning() bool {
+	return b.Miner().MevRunning()
+}
+
+func (b *EthAPIBackend) StartMEV() error {
+	return b.Miner().StartMEV()
+}
+
+func (b *EthAPIBackend) StopMEV() error {
+	return b.Miner().StopMEV()
+}
+
+func (b *EthAPIBackend) AddBuilder(builder common.Address, url string) error {
+	return b.Miner().AddBuilder(builder, url)
+}
+
+func (b *EthAPIBackend) RemoveBuilder(builder common.Address) error {
+	return b.Miner().RemoveBuilder(builder)
+}
+
+func (b *EthAPIBackend) BidBlock(ctx context.Context, bid *types.Bid) error {
+	return b.Miner().BidBlock(ctx, bid)
+}

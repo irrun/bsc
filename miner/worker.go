@@ -155,6 +155,8 @@ type getWorkReq struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	*bidSimulator
+
 	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
@@ -277,6 +279,13 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	if init {
 		worker.startCh <- struct{}{}
 	}
+
+	worker.bidSimulator = newBidSimulator(config.Mev, worker)
+
+	if config.Mev.Enabled {
+		worker.bidSimulator.start()
+	}
+
 	return worker
 }
 
@@ -1134,16 +1143,19 @@ LOOP:
 		}
 	}
 	// get the most profitable work
-	bestWork := workList[0]
-	bestReward := new(big.Int)
+	bestLocalWork := workList[0]
+	bestLocalReward := new(big.Int)
 	for i, wk := range workList {
 		balance := wk.state.GetBalance(consensus.SystemAddress)
-		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestReward", bestReward)
-		if balance.Cmp(bestReward) > 0 {
-			bestWork = wk
-			bestReward = balance
+		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestLocalReward", bestLocalReward)
+		if balance.Cmp(bestLocalReward) > 0 {
+			bestLocalWork = wk
+			bestLocalReward = balance
 		}
 	}
+
+	bestWork := w.getGlobalBestWork(bestLocalWork, bestLocalReward)
+
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
 	// Swap out the old work with the new one, terminating any leftover
@@ -1151,7 +1163,42 @@ LOOP:
 	if w.current != nil {
 		w.current.discard()
 	}
-	w.current = bestWork
+	w.current = bestLocalWork
+}
+
+func (w *worker) getGlobalBestWork(localWork *environment, localReward *big.Int) *environment {
+	// when not inTurn, use local work to prevent bundle leakage
+	if localWork.header.Difficulty.Cmp(diffInTurn) != 0 {
+		return localWork
+	}
+
+	if !w.bidSimulator.Running() {
+		return localWork
+	}
+
+	bestBid := w.bidSimulator.GetBestBid(localWork.header.ParentHash)
+	if bestBid == nil {
+		return localWork
+	}
+
+	// maximize global profit
+	increaseForAll := new(big.Int).Sub(bestBid.PackedBlockReward(), localReward)
+	bestForAll := increaseForAll.Cmp(big.NewInt(0)) > 0
+	if !bestForAll {
+		return localWork
+	}
+
+	// do not damage coinbase profit
+	// increaseForCoinbase = (bestBidBlockReward*commissionRate - builderFee) - localReward*commissionRate
+	localRewardForCoinbase := new(big.Int).Mul(localReward, validatorCommission)
+	bidRewardForCoinbase := bestBid.PackedValidatorReward()
+	increaseForCoinbase := new(big.Int).Sub(bidRewardForCoinbase, localRewardForCoinbase)
+	bestForCoinbase := increaseForCoinbase.Cmp(big.NewInt(0)) > 0
+	if !bestForCoinbase {
+		return localWork
+	}
+
+	return bestBid.env
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
