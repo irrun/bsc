@@ -19,6 +19,7 @@ package eth
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"math/big"
 	"time"
 
@@ -288,6 +289,18 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	return b.eth.txPool.Add([]*txpool.Transaction{{Tx: signedTx}}, true, false)[0]
+}
+
+func (b *EthAPIBackend) SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, uuid uuid.UUID, signingAddress common.Address, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
+	return b.eth.txPool.AddMevBundle(txs, big.NewInt(blockNumber.Int64()), uuid, signingAddress, minTimestamp, maxTimestamp, revertingTxHashes)
+}
+
+func (b *EthAPIBackend) SendSBundle(ctx context.Context, sbundle *types.SBundle) error {
+	return b.eth.txPool.AddSBundle(sbundle)
+}
+
+func (b *EthAPIBackend) CancelSBundles(ctx context.Context, hashes []common.Hash) {
+	b.eth.txPool.CancelSBundles(hashes)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {

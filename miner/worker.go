@@ -213,6 +213,8 @@ type worker struct {
 	// External functions
 	isLocalBlock func(header *types.Header) bool // Function used to determine whether the specified block is mined by local miner.
 
+	flashbots *flashbotsData
+
 	// Test hooks
 	newTaskHook       func(*task)                        // Method to call upon receiving a new sealing task.
 	skipSealHook      func(*task) bool                   // Method to decide whether skipping the sealing.
@@ -267,11 +269,15 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
-	worker.wg.Add(4)
+	worker.wg.Add(2)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
-	go worker.resultLoop()
-	go worker.taskLoop()
+	// only mine if not flashbots
+	{
+		worker.wg.Add(2)
+		go worker.resultLoop()
+		go worker.taskLoop()
+	}
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -919,6 +925,16 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	return env, nil
 }
 
+func (w *worker) fillTransactionsSelectAlgo(interrupt chan int32, env *environment, stopTimer *time.Timer) (err error) {
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY:
+		return w.fillTransactionsMev(interrupt, env)
+		// other algo
+	}
+
+	return nil
+}
+
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
@@ -1060,7 +1076,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
-		err = w.fillTransactions(interruptCh, work, stopTimer)
+		err = w.fillTransactionsSelectAlgo(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):

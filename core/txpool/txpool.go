@@ -72,6 +72,8 @@ type TxPool struct {
 
 	subs event.SubscriptionScope // Subscription scope to unscubscribe all on shutdown
 	quit chan chan error         // Quit channel to tear down the head updater
+
+	mevBundles []types.MevBundle
 }
 
 // New creates a new transaction pool to gather, sort and filter inbound

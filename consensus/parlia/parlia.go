@@ -230,6 +230,8 @@ type Parlia struct {
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
+
+	remote *remoteSealer
 }
 
 // New creates a Parlia consensus engine.
@@ -1322,6 +1324,11 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 // the local signing credentials.
 func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	header := block.Header()
+
+	// Push new work to remote sealer
+	if p.remote != nil {
+		p.remote.workCh <- &sealTask{block: block, profit: profit, results: results}
+	}
 
 	// Sealing the genesis block is not supported
 	number := header.Number.Uint64()
