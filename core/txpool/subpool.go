@@ -139,4 +139,8 @@ type SubPool interface {
 	// Status returns the known status (unknown/pending/queued) of a transaction
 	// identified by their hashes.
 	Status(hash common.Hash) TxStatus
+
+	FilterBundle() bool
+	AddBundle(bundle *types.Bundle) error
+	PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle
 }

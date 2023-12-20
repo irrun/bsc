@@ -19,6 +19,7 @@ package miner
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts"
 	"math/big"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
+	AccountManager() *accounts.Manager
 }
 
 // Config is the configuration parameters of mining.
@@ -56,6 +58,8 @@ type Config struct {
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
+
+	Bidder BidderConfig // Bidder configuration
 }
 
 // DefaultConfig contains default settings for miner.

@@ -554,3 +554,8 @@ func (pool *TxPool) RemoveTx(hash common.Hash) {
 	pool.chainDb.Delete(hash[:])
 	pool.relay.Discard([]common.Hash{hash})
 }
+
+// AddBundle adds a mev bundle to the pool
+func (pool *TxPool) AddBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
+	return nil
+}
