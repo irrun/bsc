@@ -162,7 +162,7 @@ func (b *bidder) bid(work *environment) {
 			Timestamp:  time.Now().Unix(),
 		}
 
-		// TODO(renee) review sign
+		// TODO(roshan) review sign
 		data, _ := jsoniter.Marshal(bid)
 		signature, err := b.engine.SealData(data)
 
