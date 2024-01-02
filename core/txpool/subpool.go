@@ -140,7 +140,13 @@ type SubPool interface {
 	// identified by their hashes.
 	Status(hash common.Hash) TxStatus
 
+	// FilterBundle is a selector used to decide whether a bundle would be added
+	// to this particular subpool.
 	FilterBundle() bool
+
+	// AddBundle enqueues a bundle into the pool if it is valid.
 	AddBundle(bundle *types.Bundle) error
+
+	// PendingBundles retrieves all currently processable bundles.
 	PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle
 }

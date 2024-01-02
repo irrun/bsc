@@ -8,7 +8,7 @@ import (
 )
 
 type Bundle struct {
-	// TODO not export
+	// TODO(renee) not export
 	Txs               Transactions
 	MaxBlockNumber    rpc.BlockNumber
 	MinTimestamp      uint64
@@ -16,10 +16,12 @@ type Bundle struct {
 	RevertingTxHashes []common.Hash
 
 	Hash common.Hash `rlp:"-"`
+
+	Price *big.Int // for bundle compare and prune
 }
 
 type SimulatedBundle struct {
-	// TODO not export
+	// TODO(renee) not export
 
 	MevGasPrice       *big.Int
 	TotalEth          *big.Int

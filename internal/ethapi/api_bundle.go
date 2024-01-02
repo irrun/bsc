@@ -46,6 +46,7 @@ type BundlePrice struct {
 	MinimalGasPrice *big.Int `json:"minimalGasPrice"`
 }
 
+// BundlePrice TODO(renee): implement (refer to bsc-private)
 func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) (*BundlePrice, error) {
 	return nil, nil
 }
@@ -54,7 +55,7 @@ func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) (*BundlePrice, err
 // The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
 func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs) error {
 	if len(args.Txs) == 0 {
-		return errors.New("bundle missing txs")
+		return newBundleError(errors.New("bundle missing txs"))
 	}
 
 	if args.MaxBlockNumber == 0 && (args.MaxTimestamp == nil || *args.MaxTimestamp == 0) {
@@ -65,22 +66,22 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 	currentHeader := s.b.CurrentHeader()
 
 	if args.MaxBlockNumber != 0 && args.MaxBlockNumber.Int64() > currentHeader.Number.Int64()+MaxBundleBlockDelay {
-		return errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100")
+		return newBundleError(errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100"))
 	}
 
 	if args.MaxTimestamp != nil && args.MinTimestamp != nil && *args.MaxTimestamp != 0 && *args.MinTimestamp != 0 {
 		if *args.MaxTimestamp <= *args.MinTimestamp {
-			return errors.New("the maxTimestamp should not be less than minTimestamp")
+			return newBundleError(errors.New("the maxTimestamp should not be less than minTimestamp"))
 		}
 	}
 
 	if args.MaxTimestamp != nil && *args.MaxTimestamp != 0 && *args.MaxTimestamp < currentHeader.Time {
-		return errors.New("the maxTimestamp should not be less than currentBlockTimestamp")
+		return newBundleError(errors.New("the maxTimestamp should not be less than currentBlockTimestamp"))
 	}
 
 	if (args.MaxTimestamp != nil && *args.MaxTimestamp > currentHeader.Time+uint64(MaxBundleTimeDelay)) ||
 		(args.MinTimestamp != nil && *args.MinTimestamp > currentHeader.Time+uint64(MaxBundleTimeDelay)) {
-		return errors.New("the minTimestamp/maxTimestamp should not be later than currentBlockTimestamp + 5 minutes")
+		return newBundleError(errors.New("the minTimestamp/maxTimestamp should not be later than currentBlockTimestamp + 5 minutes"))
 	}
 
 	var txs types.Transactions
@@ -112,4 +113,22 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 	}
 
 	return s.b.SendBundle(ctx, bundle)
+}
+
+func newBundleError(err error) *bundleError {
+	return &bundleError{
+		error: err,
+	}
+}
+
+// bundleError is an API error that encompasses an invalid bundle with JSON error
+// code and a binary data blob.
+type bundleError struct {
+	error
+}
+
+// ErrorCode returns the JSON error code for an invalid bundle.
+// See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
+func (e *bundleError) ErrorCode() int {
+	return InvalidBundleParamError
 }

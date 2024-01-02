@@ -127,12 +127,12 @@ func (b *bidder) registered(validator common.Address) bool {
 // 2. send bid to validator
 func (b *bidder) bid(work *environment) {
 	var (
-		client  = b.validators[work.coinbase]
+		cli     = b.validators[work.coinbase]
 		parent  = b.chain.CurrentBlock()
 		bidArgs *types.BidArgs
 	)
 
-	if client == nil {
+	if cli == nil {
 		log.Error("Bidder: invalid validator", "validator", work.coinbase)
 		return
 	}
@@ -156,13 +156,13 @@ func (b *bidder) bid(work *environment) {
 			ParentHash:  parent.Hash(),
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
-			// TODO(raina) decide builderFee according to realtime traffic and validator commission
+			// TODO(renee) decide builderFee according to realtime traffic and validator commission
 			BuilderFee: work.bundleProfit.Uint64() * 5 / 100,
 			Txs:        txs,
 			Timestamp:  time.Now().Unix(),
 		}
 
-		// TODO(raina) review sign
+		// TODO(renee) review sign
 		data, _ := jsoniter.Marshal(bid)
 		signature, err := b.engine.SealData(data)
 
@@ -177,7 +177,7 @@ func (b *bidder) bid(work *environment) {
 		}
 	}
 
-	err := client.BidBlock(context.Background(), bidArgs)
+	err := cli.BidBlock(context.Background(), bidArgs)
 	if err != nil {
 		log.Error("Bidder: bidding failed", "err", err)
 		return
@@ -207,19 +207,4 @@ func (b *bidder) getBestWork(blockNumber int64) *environment {
 	defer b.bestWorksMu.RUnlock()
 
 	return b.bestWorks[blockNumber]
-}
-
-type jsonError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
-type jsonrpcMessage struct {
-	Version string                `json:"jsonrpc,omitempty"`
-	ID      jsoniter.RawMessage   `json:"id,omitempty"`
-	Method  string                `json:"method,omitempty"`
-	Params  []jsoniter.RawMessage `json:"params,omitempty"`
-	Error   *jsonError            `json:"error,omitempty"`
-	Result  jsoniter.RawMessage   `json:"result,omitempty"`
 }

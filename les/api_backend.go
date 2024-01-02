@@ -200,8 +200,8 @@ func (b *LesApiBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 	return b.eth.txPool.Add(ctx, signedTx)
 }
 
-func (b *LesApiBackend) SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
-	return b.eth.txPool.AddBundle(txs, big.NewInt(blockNumber.Int64()), minTimestamp, maxTimestamp, revertingTxHashes)
+func (b *LesApiBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
+	return b.eth.txPool.AddBundle(bundle)
 }
 
 func (b *LesApiBackend) RemoveTx(txHash common.Hash) {

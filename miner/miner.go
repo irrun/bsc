@@ -19,7 +19,6 @@ package miner
 
 import (
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts"
 	"math/big"
 	"sync"
 	"time"
@@ -42,7 +41,6 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
-	AccountManager() *accounts.Manager
 }
 
 // Config is the configuration parameters of mining.

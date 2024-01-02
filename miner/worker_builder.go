@@ -13,13 +13,14 @@ import (
 )
 
 // commitWorkV2
-// TODO(raina)(raina) take bundle pool status as LOOP_WAIT condition
+// TODO(renee) take bundle pool status as LOOP_WAIT condition
 func (w *worker) commitWorkV2(interruptCh chan int32, timestamp int64) {
 
 }
 
 // fillTransactions retrieves the pending bundles and transactions from the txpool and fills them
 // into the given sealing block. The selection and ordering strategy can be extended in the future.
+// TODO(renee) refer to flashbots/builder to optimize the bundle selection and ordering strategy
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) (err error) {
 	var (
 		pending   map[common.Address][]*txpool.LazyTransaction
@@ -60,7 +61,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 
-		// TODO(raina) bundleProfit = balance of coinbase
+		// TODO(renee) bundleProfit = balance of coinbase
 	}
 
 	env.bundleProfit.Add(env.bundleProfit, bundleProfit)
@@ -84,7 +85,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		err = w.commitTransactions(env, txs, interruptCh, stopTimer)
 	}
 
-	// TODO(raina) blockReward = balance of coinbase
+	// TODO(renee) blockReward = balance of coinbase
 	var blockReward *big.Int
 	env.blockReward.Add(env.blockReward, blockReward)
 

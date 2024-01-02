@@ -132,7 +132,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Namespace: "eth",
 			Service:   NewPrivateTxBundleAPI(apiBackend),
 		}, {
-			Namespace: "admin",
+			Namespace: "eth",
 			Service:   NewIssueAPI(apiBackend),
 		},
 	}

@@ -1088,6 +1088,9 @@ LOOP:
 			break LOOP
 		}
 
+		// TODO(renee) handle stop bidding
+		go w.bidder.Bid(work)
+
 		if interruptCh == nil || stopTimer == nil {
 			// it is single commit work, no need to try several time.
 			log.Info("commitWork interruptCh or stopTimer is nil")
