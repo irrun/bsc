@@ -1,6 +1,8 @@
 package types
 
 import (
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -9,11 +11,11 @@ import (
 type Bid struct {
 	BlockNumber uint64          `json:"blockNumber"`
 	ParentHash  common.Hash     `json:"parentHash"`
+	Txs         []hexutil.Bytes `json:"txs,omitempty"`
 	GasUsed     uint64          `json:"gasUsed"`
 	GasFee      uint64          `json:"gasFee"`
-	BuilderFee  uint64          `json:"builder_fee"`
-	Txs         []hexutil.Bytes `json:"txs,omitempty"`
 	Timestamp   int64           `json:"timestamp"`
+	BuilderFee  *big.Int        `json:"builderFee"`
 }
 
 // BidArgs represents the arguments to submit a bid.

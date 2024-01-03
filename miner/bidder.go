@@ -3,6 +3,7 @@ package miner
 import (
 	"context"
 	"crypto/tls"
+	"math/big"
 	"net"
 	"net/http"
 	"sync"
@@ -157,7 +158,7 @@ func (b *bidder) bid(work *environment) {
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
 			// TODO(renee) decide builderFee according to realtime traffic and validator commission
-			BuilderFee: work.bundleProfit.Uint64() * 5 / 100,
+			BuilderFee: big.NewInt(int64(float64(work.bundleProfit.Uint64() * 5 / 100))),
 			Txs:        txs,
 			Timestamp:  time.Now().Unix(),
 		}
