@@ -2,10 +2,10 @@ package miner
 
 import (
 	"context"
-	"time"
-
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"time"
 )
 
 type BuilderConfig struct {
@@ -14,14 +14,9 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled                    bool            // Whether to enable MEV or not
-	SentryURL                  string          // The url of MEV sentry
-	Builders                   []BuilderConfig // The list of builders
-	CommissionRate             float64         // Commission rate of staking for the current validator
-	MaxAllowDurationForBidding time.Duration   // Max allowed duration for accepting bids in two rounds interactions
-	TimeoutForRetrieveTxs      time.Duration   // Timeout duration for retrieving txs from a builder in two rounds interactions
-	SlashBlocksForTxsTimeout   int64           // The count of blocks for slashing a builder when retrieving txs timeout; restart node will cancel slashes.
-	SlashBlocksForInvalidBlock int64           // The count of blocks for slashing a builder when the proposed block is invalid; restart node will cancel slashes.
+	Enabled   bool            // Whether to enable MEV or not
+	SentryURL string          // The url of MEV sentry
+	Builders  []BuilderConfig // The list of builders
 }
 
 func (miner *Miner) MevRunning() bool {
@@ -49,5 +44,15 @@ func (miner *Miner) RemoveBuilder(builderAddr common.Address) error {
 }
 
 func (miner *Miner) BidBlock(ctx context.Context, bid *types.Bid) error {
+	currentHeader := miner.eth.BlockChain().CurrentHeader()
+	nextHeaderTimestamp := currentHeader.Time + miner.worker.chainConfig.Parlia.Period
+	endOfProposingWindow := time.Unix(int64(nextHeaderTimestamp), 0).Add(-miner.worker.config.DelayLeftOver)
+	timeout := time.Until(endOfProposingWindow)
+
+	if timeout <= 0 {
+		return fmt.Errorf("too late, expected befor %s, appeared %s later", endOfProposingWindow,
+			common.PrettyDuration(timeout))
+	}
+
 	return miner.worker.BidBlock(ctx, bid)
 }

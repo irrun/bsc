@@ -332,6 +332,8 @@ func (w *bidSimulator) clearLoop() {
 		}
 	}
 
+	// TODO(renee) call env.discard()
+
 	for {
 		select {
 		case head := <-chainHeadCh:
@@ -569,6 +571,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		gp   = env.gasPool.Gas()
 	)
 
+	// TODO(renee) ensure receiptProcessors is correct
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
 		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
 
