@@ -139,18 +139,27 @@ func (api *AdminAPI) ImportChain(file string) (bool, error) {
 	return true, nil
 }
 
+// Running returns true if mev is running
+func (api *AdminAPI) Running() bool {
+	return api.eth.APIBackend.MevRunning()
+}
+
+// StartMev starts mev, return error if it is already running.
+func (api *AdminAPI) StartMev() {
+	api.eth.APIBackend.StartMev()
+}
+
+// StopMev stops mev, always return nil.
+func (api *AdminAPI) StopMev() {
+	api.eth.APIBackend.StopMev()
+}
+
+// AddBuilder adds a builder to the bid simulator.
 func (api *AdminAPI) AddBuilder(builder common.Address, url string) error {
 	return api.eth.APIBackend.AddBuilder(builder, url)
 }
 
+// RemoveBuilder removes a builder from the bid simulator.
 func (api *AdminAPI) RemoveBuilder(builder common.Address) error {
 	return api.eth.APIBackend.RemoveBuilder(builder)
-}
-
-func (api *AdminAPI) StartMEV() error {
-	return api.eth.APIBackend.StartMEV()
-}
-
-func (api *AdminAPI) StopMEV() error {
-	return api.eth.APIBackend.StopMEV()
 }

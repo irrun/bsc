@@ -14,7 +14,7 @@ type Bid struct {
 	ParentHash  common.Hash
 	Txs         Transactions
 	GasUsed     uint64
-	GasFee      uint64
+	GasFee      *big.Int
 	Timestamp   int64
 	BuilderFee  *big.Int
 
@@ -35,7 +35,11 @@ func (b *Bid) Hash() common.Hash {
 	return h
 }
 
+// BidIssue
+// TODO(renee) predefine some code/message to help builder handle the error
 type BidIssue struct {
-	BidHash common.Hash
-	Message string
+	BlockNumber uint64
+	ParentHash  common.Hash
+	BidHash     common.Hash
+	Message     string
 }

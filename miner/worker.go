@@ -131,6 +131,7 @@ const (
 	commitInterruptResubmit
 	commitInterruptTimeout
 	commitInterruptOutOfGas
+	commitInterruptNewBid
 )
 
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
@@ -152,11 +153,14 @@ type getWorkReq struct {
 	result chan *newPayloadResult // non-blocking channel
 }
 
+type bidFetcher interface {
+	GetBestBid(parentHash common.Hash) *BidRuntime
+}
+
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
-	*bidSimulator
-
+	bidFetcher  bidFetcher
 	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
@@ -280,13 +284,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		worker.startCh <- struct{}{}
 	}
 
-	worker.bidSimulator = newBidSimulator(config.Mev, worker)
-
-	if config.Mev.Enabled {
-		worker.bidSimulator.start()
-	}
-
 	return worker
+}
+
+func (w *worker) setBestBidFetcher(fetcher bidFetcher) {
+	w.bidFetcher = fetcher
 }
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
@@ -884,13 +886,18 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		}
 		timestamp = parent.Time + 1
 	}
+
+	coinbase := genParams.coinbase
+	if coinbase == (common.Address{}) {
+		coinbase = w.etherbase()
+	}
 	// Construct the sealing block header.
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   core.CalcGasLimit(parent.GasLimit, w.config.GasCeil),
 		Time:       timestamp,
-		Coinbase:   genParams.coinbase,
+		Coinbase:   coinbase,
 	}
 	// Set the extra field.
 	if len(w.extra) != 0 {
@@ -916,7 +923,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, genParams.coinbase, genParams.prevWork)
+	env, err := w.makeEnv(parent, header, coinbase, genParams.prevWork)
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
@@ -1143,18 +1150,31 @@ LOOP:
 		}
 	}
 	// get the most profitable work
-	bestLocalWork := workList[0]
-	bestLocalReward := new(big.Int)
+	bestWork := workList[0]
+	bestReward := new(big.Int)
 	for i, wk := range workList {
 		balance := wk.state.GetBalance(consensus.SystemAddress)
-		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestLocalReward", bestLocalReward)
-		if balance.Cmp(bestLocalReward) > 0 {
-			bestLocalWork = wk
-			bestLocalReward = balance
+		log.Debug("Get the most profitable work", "index", i, "balance", balance, "bestReward", bestReward)
+		if balance.Cmp(bestReward) > 0 {
+			bestWork = wk
+			bestReward = balance
 		}
 	}
 
-	bestWork := w.getGlobalBestWork(bestLocalWork, bestLocalReward)
+	// when out-turn, use bestWork to prevent bundle leakage.
+	// when in-turn, compare with remote work.
+	if bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+
+		if bestBid != nil && bestBid.packedBlockReward.Cmp(bestReward) > 0 {
+			localRewardForCoinbase := new(big.Int).Mul(bestReward, big.NewInt(w.config.Mev.ValidatorCommission))
+			localRewardForCoinbase.Div(localRewardForCoinbase, big.NewInt(10000))
+
+			if bestBid.packedValidatorReward.Cmp(localRewardForCoinbase) > 0 {
+				bestWork = bestBid.env
+			}
+		}
+	}
 
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
@@ -1163,42 +1183,13 @@ LOOP:
 	if w.current != nil {
 		w.current.discard()
 	}
-	w.current = bestLocalWork
+	w.current = bestWork
 }
 
-func (w *worker) getGlobalBestWork(localWork *environment, localReward *big.Int) *environment {
-	// when not inTurn, use local work to prevent bundle leakage
-	if localWork.header.Difficulty.Cmp(diffInTurn) != 0 {
-		return localWork
-	}
-
-	if !w.bidSimulator.Running() {
-		return localWork
-	}
-
-	bestBid := w.bidSimulator.GetBestBid(localWork.header.ParentHash)
-	if bestBid == nil {
-		return localWork
-	}
-
-	// maximize global profit
-	increaseForAll := new(big.Int).Sub(bestBid.PackedBlockReward(), localReward)
-	bestForAll := increaseForAll.Cmp(big.NewInt(0)) > 0
-	if !bestForAll {
-		return localWork
-	}
-
-	// do not damage coinbase profit
-	// increaseForCoinbase = (bestBidBlockReward*commissionRate - builderFee) - localReward*commissionRate
-	localRewardForCoinbase := new(big.Int).Mul(localReward, validatorCommission)
-	bidRewardForCoinbase := bestBid.PackedValidatorReward()
-	increaseForCoinbase := new(big.Int).Sub(bidRewardForCoinbase, localRewardForCoinbase)
-	bestForCoinbase := increaseForCoinbase.Cmp(big.NewInt(0)) > 0
-	if !bestForCoinbase {
-		return localWork
-	}
-
-	return bestBid.env
+// inTurn return true if the current worker is in turn.
+func (w *worker) inTurn() bool {
+	validator, _ := w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
+	return validator == w.etherbase()
 }
 
 // commit runs any post-transaction state modifications, assembles the final block

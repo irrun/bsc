@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
-	"math/big"
+	jsoniter "github.com/json-iterator/go"
 )
 
 const (
 	InvalidBidParamError = -38001
+	MevNotRunningError   = -38002
 )
 
 // BidArgs represents the arguments to submit a bid.
@@ -30,26 +32,28 @@ type Bid struct {
 	ParentHash  common.Hash     `json:"parentHash"`
 	Txs         []hexutil.Bytes `json:"txs,omitempty"`
 	GasUsed     uint64          `json:"gasUsed"`
-	GasFee      uint64          `json:"gasFee"`
+	GasFee      *big.Int        `json:"gasFee"`
 	Timestamp   int64           `json:"timestamp"`
 	BuilderFee  *big.Int        `json:"builderFee"`
 }
 
-// MevAPI provides an API for PBS.
+// MevAPI implements the interfaces that defined in the BEP-322.
 // It offers methods for the interaction between builders and validators.
 type MevAPI struct {
 	b Backend
 }
 
-// NewMevAPI creates a new Builder API.
+// NewMevAPI creates a new MevAPI.
 func NewMevAPI(b Backend) *MevAPI {
 	return &MevAPI{b}
 }
 
-// BidBlock sends a bid to the validator.
-func (m *MevAPI) BidBlock(ctx context.Context, args BidArgs) error {
+// SendBid receives bid from the builders.
+// If mev is not running or bid is invalid, return error.
+// Otherwise, creates a builder bid for the given argument, submit it to the miner.
+func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error) {
 	if !m.b.MevRunning() {
-		return errors.New("mev is not running")
+		return common.Hash{}, newBidError(errors.New("mev is not running"), MevNotRunningError)
 	}
 
 	var (
@@ -59,37 +63,35 @@ func (m *MevAPI) BidBlock(ctx context.Context, args BidArgs) error {
 		builderFee    = big.NewInt(0)
 	)
 
-	if len(bid.Txs) == 0 {
-		return newBidError(errors.New("block missing txs"))
-	}
-
-	if bid.BlockNumber <= currentHeader.Number.Uint64() {
-		return newBidError(fmt.Errorf("block number is stale"))
+	// only support bidding for the next block not for the future block
+	if bid.BlockNumber != currentHeader.Number.Uint64()+1 {
+		return common.Hash{}, newBidError(fmt.Errorf("block number is stale"), InvalidBidParamError)
 	}
 
 	if bid.ParentHash != currentHeader.Hash() {
-		return newBidError(fmt.Errorf("non-aligned parent hash:%v", currentHeader.Hash()))
+		return common.Hash{}, newBidError(fmt.Errorf("non-aligned parent hash:%v", currentHeader.Hash()), InvalidBidParamError)
 	}
 
-	if bid.BuilderFee.Cmp(big.NewInt(0).SetUint64(bid.GasFee)) >= 0 {
-		return newBidError(fmt.Errorf("builder fee must be less than gas fee"))
-	}
-
-	for _, encodedTx := range args.Bid.Txs {
-		tx := new(types.Transaction)
-		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return newBidError(fmt.Errorf("invalid tx, %v", err))
+	if bid.BuilderFee != nil {
+		builderFee = bid.BuilderFee
+		if builderFee.Cmp(bid.GasFee) >= 0 {
+			return common.Hash{}, newBidError(fmt.Errorf("builder fee must be less than gas fee"), InvalidBidParamError)
 		}
-		txs = append(txs, tx)
 	}
 
 	builder, err := parseSignature(args)
 	if err != nil {
-		return newBidError(err)
+		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
 
-	if args.Bid.BuilderFee != nil {
-		builderFee = args.Bid.BuilderFee
+	// TODO(renee) recover signature
+	// TODO(renee) parallel here
+	for _, encodedTx := range bid.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return common.Hash{}, newBidError(fmt.Errorf("invalid tx, %v", err), InvalidBidParamError)
+		}
+		txs = append(txs, tx)
 	}
 
 	innerBid := &types.Bid{
@@ -103,23 +105,24 @@ func (m *MevAPI) BidBlock(ctx context.Context, args BidArgs) error {
 		BuilderFee:  builderFee,
 	}
 
-	err = m.b.BidBlock(ctx, innerBid)
+	err = m.b.SendBid(ctx, innerBid)
 
 	if err != nil {
-		return newBidError(err)
+		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
 
-	return nil
+	return innerBid.Hash(), nil
 }
 
-// MevRunning returns true if the mev is enabled.
-func (m *MevAPI) MevRunning() bool {
+// Running returns true if mev is running
+func (m *MevAPI) Running() bool {
 	return m.b.MevRunning()
 }
 
-func newBidError(err error) *bidError {
+func newBidError(err error, code int) *bidError {
 	return &bidError{
 		error: err,
+		code:  code,
 	}
 }
 
@@ -127,29 +130,34 @@ func newBidError(err error) *bidError {
 // code and a binary data blob.
 type bidError struct {
 	error
+	code int
 }
 
 // ErrorCode returns the JSON error code for an invalid bid.
 // See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
 func (e *bidError) ErrorCode() int {
-	return InvalidBidParamError
+	return e.code
 }
 
 func parseSignature(args BidArgs) (common.Address, error) {
-	hash, err := rlp.EncodeToBytes(args.Bid)
+	bid, err := jsoniter.Marshal(args.Bid)
 	if err != nil {
-		return common.Address{}, errors.New("fail to parse signature, err: " + err.Error())
+		return common.Address{}, fmt.Errorf("fail to marshal bid, %v", err.Error())
 	}
 
-	sig := hexutil.MustDecode(args.Signature)
-	sigPublicKey, err := crypto.Ecrecover(hash, sig)
+	sigature, err := hexutil.Decode(args.Signature)
 	if err != nil {
-		return common.Address{}, errors.New("fail to parse signature, err: " + err.Error())
+		return common.Address{}, fmt.Errorf("fail to decode signature, %v", err.Error())
+	}
+
+	sigPublicKey, err := crypto.Ecrecover(crypto.Keccak256(bid), sigature)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("fail to recover signature, %v ", err.Error())
 	}
 
 	pk, err := crypto.UnmarshalPubkey(sigPublicKey)
 	if err != nil {
-		return common.Address{}, errors.New("fail to parse signature, err: " + err.Error())
+		return common.Address{}, fmt.Errorf("fail to unmarshal pubkey, %v", err.Error())
 	}
 
 	return crypto.PubkeyToAddress(*pk), nil

@@ -3,9 +3,10 @@ package miner
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"time"
 )
 
 type BuilderConfig struct {
@@ -14,36 +15,39 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled   bool            // Whether to enable MEV or not
-	SentryURL string          // The url of MEV sentry
+	Enabled   bool            // Whether to enable Mev or not
+	SentryURL string          // The url of Mev sentry
 	Builders  []BuilderConfig // The list of builders
+
+	ValidatorCommission int64 // 100 means 1%
 }
 
+// MevRunning return true if mev is running.
 func (miner *Miner) MevRunning() bool {
-	if miner.worker.config.Mev == nil {
-		return false
-	}
-
-	return miner.worker.bidSimulator.Running()
+	return miner.bidSimulator.isRunning() && miner.bidSimulator.receivingBid()
 }
 
-func (miner *Miner) StartMEV() error {
-	return miner.worker.bidSimulator.Start()
+// StartMev starts mev, return error if it is already running.
+func (miner *Miner) StartMev() {
+	miner.bidSimulator.startReceivingBid()
 }
 
-func (miner *Miner) StopMEV() error {
-	return miner.worker.bidSimulator.Stop()
+// StopMev stops mev, always return nil.
+func (miner *Miner) StopMev() {
+	miner.bidSimulator.stopReceivingBid()
 }
 
+// AddBuilder adds a builder to the bid simulator.
 func (miner *Miner) AddBuilder(builder common.Address, builderUrl string) error {
-	return miner.worker.bidSimulator.AddBuilder(builder, builderUrl)
+	return miner.bidSimulator.AddBuilder(builder, builderUrl)
 }
 
+// RemoveBuilder removes a builder from the bid simulator.
 func (miner *Miner) RemoveBuilder(builderAddr common.Address) error {
-	return miner.worker.bidSimulator.RemoveBuilder(builderAddr)
+	return miner.bidSimulator.RemoveBuilder(builderAddr)
 }
 
-func (miner *Miner) BidBlock(ctx context.Context, bid *types.Bid) error {
+func (miner *Miner) SendBid(ctx context.Context, bid *types.Bid) error {
 	currentHeader := miner.eth.BlockChain().CurrentHeader()
 	nextHeaderTimestamp := currentHeader.Time + miner.worker.chainConfig.Parlia.Period
 	endOfProposingWindow := time.Unix(int64(nextHeaderTimestamp), 0).Add(-miner.worker.config.DelayLeftOver)
@@ -54,5 +58,5 @@ func (miner *Miner) BidBlock(ctx context.Context, bid *types.Bid) error {
 			common.PrettyDuration(timeout))
 	}
 
-	return miner.worker.BidBlock(ctx, bid)
+	return miner.bidSimulator.sendBid(ctx, bid)
 }

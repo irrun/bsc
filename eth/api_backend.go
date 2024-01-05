@@ -437,12 +437,12 @@ func (b *EthAPIBackend) MevRunning() bool {
 	return b.Miner().MevRunning()
 }
 
-func (b *EthAPIBackend) StartMEV() error {
-	return b.Miner().StartMEV()
+func (b *EthAPIBackend) StartMev() {
+	b.Miner().StartMev()
 }
 
-func (b *EthAPIBackend) StopMEV() error {
-	return b.Miner().StopMEV()
+func (b *EthAPIBackend) StopMev() {
+	b.Miner().StopMev()
 }
 
 func (b *EthAPIBackend) AddBuilder(builder common.Address, url string) error {
@@ -453,6 +453,10 @@ func (b *EthAPIBackend) RemoveBuilder(builder common.Address) error {
 	return b.Miner().RemoveBuilder(builder)
 }
 
-func (b *EthAPIBackend) BidBlock(ctx context.Context, bid *types.Bid) error {
-	return b.Miner().BidBlock(ctx, bid)
+func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.Bid) error {
+	if !b.Miner().InTurn() {
+		return errors.New("validator is not in turn")
+	}
+
+	return b.Miner().SendBid(ctx, bid)
 }

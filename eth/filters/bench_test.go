@@ -120,7 +120,7 @@ func benchmarkBloomBits(b *testing.B, sectionSize uint64) {
 	b.Log(" ", d, "total  ", d/time.Duration(cnt*sectionSize), "per block")
 	b.Log(" data size:", dataSize, "  compressed size:", compSize, "  compression ratio:", float64(compSize)/float64(dataSize))
 
-	b.Log("Running filter benchmarks...")
+	b.Log("isRunning filter benchmarks...")
 	start = time.Now()
 
 	var (
@@ -163,7 +163,7 @@ func clearBloomBits(db ethdb.Database) {
 func BenchmarkNoBloomBits(b *testing.B) {
 	b.Skip("test disabled: this tests presume (and modify) an existing datadir.")
 	benchDataDir := node.DefaultDataDir() + "/geth/chaindata"
-	b.Log("Running benchmark without bloombits")
+	b.Log("isRunning benchmark without bloombits")
 	db, err := rawdb.NewLevelDBDatabase(benchDataDir, 128, 1024, "", false)
 	if err != nil {
 		b.Fatalf("error opening database at %v: %v", benchDataDir, err)
@@ -178,7 +178,7 @@ func BenchmarkNoBloomBits(b *testing.B) {
 
 	_, sys := newTestFilterSystem(b, db, Config{})
 
-	b.Log("Running filter benchmarks...")
+	b.Log("isRunning filter benchmarks...")
 	start := time.Now()
 	filter := sys.NewRangeFilter(0, int64(*headNum), []common.Address{{}}, nil, false)
 	filter.Logs(context.Background())

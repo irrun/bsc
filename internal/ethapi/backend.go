@@ -105,15 +105,23 @@ type Backend interface {
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
 }
 
+// MevBackend interface provides the common API services
+// for mev management and bid handling.
 type MevBackend interface {
+	// MevRunning return true if mev is running
 	MevRunning() bool
-	StartMEV() error
-	StopMEV() error
+	// StartMev starts mev
+	StartMev()
+	// StopMev stops mev
+	StopMev()
 
+	// AddBuilder adds a builder to the bid simulator.
 	AddBuilder(builder common.Address, builderUrl string) error
+	// RemoveBuilder removes a builder from the bid simulator.
 	RemoveBuilder(builder common.Address) error
 
-	BidBlock(ctx context.Context, bid *types.Bid) error
+	// SendBid receives bid from the builders.
+	SendBid(ctx context.Context, bid *types.Bid) error
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {
