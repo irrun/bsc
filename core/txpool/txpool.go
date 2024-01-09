@@ -332,8 +332,11 @@ func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction
 
 // PendingBundles retrieves all currently processable bundles.
 func (p *TxPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	//TODO(renee) implement me
-	panic("implement me")
+	bundles := make([]*types.Bundle, 0)
+	for _, subpool := range p.subpools {
+		bundles = append(bundles, subpool.PendingBundles(blockNumber, blockTimestamp)...)
+	}
+	return bundles
 }
 
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending

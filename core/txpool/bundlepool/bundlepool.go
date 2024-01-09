@@ -46,7 +46,9 @@ type Config struct {
 type BundlePool struct {
 	config Config
 	chain  BlockChain
+	mu     sync.RWMutex
 
+	bundles         map[common.Hash]*types.Bundle
 	bundleGasPricer *BundleGasPricer
 }
 
@@ -73,8 +75,39 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 }
 
 func (p *BundlePool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	//TODO implement me
-	panic("implement me")
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// returned values
+	var ret []*types.Bundle
+	// rolled over values
+	bundles := make(map[common.Hash]*types.Bundle)
+
+	for uid, bundle := range p.bundles {
+		// Prune outdated bundles
+		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
+			blockNumber.Cmp(big.NewInt(bundle.MaxBlockNumber)) > 0 {
+			continue
+		}
+
+		// Roll over future bundles
+		if bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp {
+			bundles[uid] = bundle
+			continue
+		}
+
+		// return the ones which are in time
+		ret = append(ret, bundle)
+		// keep the bundles around internally until they need to be pruned
+		bundles[uid] = bundle
+
+		if bundle.Txs.Len() == 0 {
+			continue
+		}
+	}
+
+	p.bundles = bundles
+	return ret
 }
 
 func (p *BundlePool) Filter(tx *types.Transaction) bool {

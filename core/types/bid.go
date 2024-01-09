@@ -7,6 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
+// TODO(renee) refer to validator for all not in miner
+
 // Bid represents a bid.
 type Bid struct {
 	BlockNumber uint64          `json:"blockNumber"`

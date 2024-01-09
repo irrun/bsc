@@ -691,7 +691,7 @@ func (ec *Client) SendTransactionConditional(ctx context.Context, tx *types.Tran
 
 // BidBlock sends a bid for selection
 func (ec *Client) BidBlock(ctx context.Context, args *types.BidArgs) error {
-	return ec.c.CallContext(ctx, nil, "eth_bidBlock", args)
+	return ec.c.CallContext(ctx, nil, "mev_bidBlock", args)
 }
 
 func toBlockNumArg(number *big.Int) string {

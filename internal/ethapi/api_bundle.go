@@ -13,10 +13,12 @@ import (
 )
 
 const (
-	MaxBundleBlockDelay = 100
-	MaxBundleTimeDelay  = 5 * 60 // second
-	MaxOracleBlocks     = 21
-	DropBlocks          = 3
+	// MaxBundleAliveBlock is the max alive block for bundle
+	MaxBundleAliveBlock = 100
+	// MaxBundleAliveTime is the max alive time for bundle
+	MaxBundleAliveTime = 5 * 60 // second
+	MaxOracleBlocks    = 21
+	DropBlocks         = 3
 
 	InvalidBundleParamError = -38000
 )
@@ -59,13 +61,13 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 	}
 
 	if args.MaxBlockNumber == 0 && (args.MaxTimestamp == nil || *args.MaxTimestamp == 0) {
-		maxTimeStamp := uint64(time.Now().Unix()) + MaxBundleTimeDelay
+		maxTimeStamp := uint64(time.Now().Unix()) + MaxBundleAliveTime
 		args.MaxTimestamp = &maxTimeStamp
 	}
 
 	currentHeader := s.b.CurrentHeader()
 
-	if args.MaxBlockNumber != 0 && args.MaxBlockNumber.Int64() > currentHeader.Number.Int64()+MaxBundleBlockDelay {
+	if args.MaxBlockNumber != 0 && args.MaxBlockNumber.Int64() > currentHeader.Number.Int64()+MaxBundleAliveBlock {
 		return newBundleError(errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100"))
 	}
 
@@ -79,8 +81,8 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		return newBundleError(errors.New("the maxTimestamp should not be less than currentBlockTimestamp"))
 	}
 
-	if (args.MaxTimestamp != nil && *args.MaxTimestamp > currentHeader.Time+uint64(MaxBundleTimeDelay)) ||
-		(args.MinTimestamp != nil && *args.MinTimestamp > currentHeader.Time+uint64(MaxBundleTimeDelay)) {
+	if (args.MaxTimestamp != nil && *args.MaxTimestamp > currentHeader.Time+uint64(MaxBundleAliveTime)) ||
+		(args.MinTimestamp != nil && *args.MinTimestamp > currentHeader.Time+uint64(MaxBundleAliveTime)) {
 		return newBundleError(errors.New("the minTimestamp/maxTimestamp should not be later than currentBlockTimestamp + 5 minutes"))
 	}
 
@@ -106,7 +108,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 
 	bundle := &types.Bundle{
 		Txs:               txs,
-		MaxBlockNumber:    args.MaxBlockNumber,
+		MaxBlockNumber:    args.MaxBlockNumber.Int64(),
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: args.RevertingTxHashes,

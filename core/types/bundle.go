@@ -4,20 +4,17 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type Bundle struct {
-	// TODO(renee) not export
 	Txs               Transactions
-	MaxBlockNumber    rpc.BlockNumber
+	MaxBlockNumber    int64
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
 
-	Hash common.Hash `rlp:"-"`
-
-	Price *big.Int // for bundle compare and prune
+	Hash  common.Hash `rlp:"-"`
+	Price *big.Int    // for bundle compare and prune
 }
 
 type SimulatedBundle struct {
