@@ -101,7 +101,7 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
 	}
-	miner.bidSimulator = newBidSimulator(&config.Mev, chainConfig, eth.BlockChain(), miner.worker)
+	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, chainConfig, eth.BlockChain(), miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 	miner.wg.Add(1)
 	go miner.update()

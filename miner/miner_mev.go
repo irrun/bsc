@@ -3,6 +3,8 @@ package miner
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -48,14 +50,39 @@ func (miner *Miner) RemoveBuilder(builderAddr common.Address) error {
 }
 
 func (miner *Miner) SendBid(ctx context.Context, bid *types.Bid) error {
-	currentHeader := miner.eth.BlockChain().CurrentHeader()
-	nextHeaderTimestamp := currentHeader.Time + miner.worker.chainConfig.Parlia.Period
-	endOfProposingWindow := time.Unix(int64(nextHeaderTimestamp), 0).Add(-miner.worker.config.DelayLeftOver)
-	timeout := time.Until(endOfProposingWindow)
+	bidMustBefore := miner.bidSimulator.bidMustBefore()
+	timeout := time.Until(bidMustBefore)
 
 	if timeout <= 0 {
-		return fmt.Errorf("too late, expected befor %s, appeared %s later", endOfProposingWindow,
+		return fmt.Errorf("too late, expected befor %s, appeared %s later", bidMustBefore,
 			common.PrettyDuration(timeout))
+	}
+
+	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(bid.BlockNumber)), uint64(time.Now().Unix()))
+
+	var wg sync.WaitGroup
+	for i, tx := range bid.Txs {
+		i := i
+		tx := tx
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			_, err := types.Sender(signer, tx)
+			if err != nil {
+				bid.Txs[i] = nil
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	for i, _ := range bid.Txs {
+		if bid.Txs[i] == nil {
+			return fmt.Errorf("invalid tx in bid")
+		}
 	}
 
 	return miner.bidSimulator.sendBid(ctx, bid)

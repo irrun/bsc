@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -59,7 +60,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 	var (
 		bid           = args.Bid
 		currentHeader = m.b.CurrentHeader()
-		txs           types.Transactions
+		txs           = make([]*types.Transaction, len(bid.Txs))
 		builderFee    = big.NewInt(0)
 	)
 
@@ -84,14 +85,28 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
 
-	// TODO(renee) recover signature
-	// TODO(renee) parallel here
-	for _, encodedTx := range bid.Txs {
-		tx := new(types.Transaction)
-		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return common.Hash{}, newBidError(fmt.Errorf("invalid tx, %v", err), InvalidBidParamError)
+	var wg sync.WaitGroup
+	for i, encodedTx := range bid.Txs {
+		i := i
+		encodedTx := encodedTx
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			tx := new(types.Transaction)
+			if err := tx.UnmarshalBinary(encodedTx); err == nil {
+				txs[i] = tx
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	for i, _ := range txs {
+		if txs[i] == nil {
+			return common.Hash{}, newBidError(fmt.Errorf("invalid tx in bid"), InvalidBidParamError)
 		}
-		txs = append(txs, tx)
 	}
 
 	innerBid := &types.Bid{

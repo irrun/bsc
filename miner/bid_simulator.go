@@ -38,10 +38,11 @@ type simBidReq struct {
 }
 
 type bidSimulator struct {
-	config       *MevConfig
-	chain        *core.BlockChain
-	chainConfig  *params.ChainConfig
-	workPreparer SimulationWorkPreparer
+	config        *MevConfig
+	delayLeftOver time.Duration
+	chain         *core.BlockChain
+	chainConfig   *params.ChainConfig
+	workPreparer  SimulationWorkPreparer
 
 	running atomic.Bool // controlled by miner
 	stopCh  chan struct{}
@@ -70,11 +71,13 @@ type bidSimulator struct {
 
 func newBidSimulator(
 	config *MevConfig,
+	delayLeftOver time.Duration,
 	chainConfig *params.ChainConfig,
 	chain *core.BlockChain,
 	workPreparer SimulationWorkPreparer) *bidSimulator {
 	b := &bidSimulator{
 		config:        config,
+		delayLeftOver: delayLeftOver,
 		chainConfig:   chainConfig,
 		chain:         chain,
 		workPreparer:  workPreparer,
@@ -247,7 +250,18 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
-		// TODO(renee) judge the left time is enough or not to do simulation, if not, return
+		// if the left time is not enough to do simulation, return
+		var simDuration time.Duration
+		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
+			simDuration = lastBid.duration
+		}
+		// simulatingBid's duration is longer than bestBid's duration in most case
+		if lastBid := b.GetSimulatingBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
+			simDuration = lastBid.duration
+		}
+		if time.Until(b.bidMustBefore()) <= simDuration {
+			return
+		}
 
 		if interruptCh != nil {
 			// each commit work will have its own interruptCh to stop work with a reason
@@ -285,17 +299,29 @@ func (b *bidSimulator) newBidLoop() {
 				packedValidatorReward:   big.NewInt(0),
 			}
 
-			// TODO(renee) generate timestamp refer to miner
+			// TODO(renee-) opt bid comparation
 
 			simulatingBid := b.GetSimulatingBid(newBid.ParentHash)
-			// simulatingBid is nil meas newBid is the first bid
+			// simulatingBid is nil means there is no bid in simulation
 			if simulatingBid == nil {
-				timestamp = time.Now().Unix()
-				commit(commitInterruptNewBid, bidRuntime)
-				continue
+				// bestBid is nil means bid is the first bid
+				bestBid := b.GetBestBid(newBid.ParentHash)
+				if bestBid == nil {
+					timestamp = time.Now().Unix()
+					commit(commitInterruptNewBid, bidRuntime)
+					continue
+				}
+
+				// if bestBid is not nil, check if newBid is better than bestBid
+				if bidRuntime.expectedBlockReward.Cmp(bestBid.expectedBlockReward) > 0 &&
+					bidRuntime.expectedValidatorReward.Cmp(bestBid.expectedValidatorReward) > 0 {
+					// if both reward are better than last simulating newBid, commit for simulation
+					timestamp = time.Now().Unix()
+					commit(commitInterruptNewBid, bidRuntime)
+					continue
+				}
 			}
 
-			// TODO(renee) opt comparation
 			// simulatingBid must be better than bestBid, if newBid is better than simulatingBid, commit for simulation
 			if bidRuntime.expectedBlockReward.Cmp(simulatingBid.expectedBlockReward) > 0 &&
 				bidRuntime.expectedValidatorReward.Cmp(simulatingBid.expectedValidatorReward) > 0 {
@@ -305,16 +331,16 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			// simulatingBid must be better than bestBid, if newBid is
-			bestBid := b.GetBestBid(newBid.ParentHash)
-			if bestBid == nil {
-
-			}
-
 		case <-b.stopCh:
 			return
 		}
 	}
+}
+
+func (b *bidSimulator) bidMustBefore() time.Time {
+	currentHeader := b.chain.CurrentHeader()
+	nextHeaderTimestamp := currentHeader.Time + b.chainConfig.Parlia.Period
+	return time.Unix(int64(nextHeaderTimestamp), 0).Add(-b.delayLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {
@@ -403,15 +429,25 @@ func (b *bidSimulator) simBid(interruptCh chan int32, timestamp int64, bidRuntim
 		return
 	}
 
-	// set the current simulating bid
-	b.SetSimulatingBid(bidRuntime.bid.ParentHash, bidRuntime)
-
 	var (
 		bidBlockNumber = bidRuntime.bid.BlockNumber
 		bidParentHash  = bidRuntime.bid.ParentHash
 		bidFrom        = bidRuntime.bid.Builder
 	)
 
+	// set the current simulating bid
+	b.SetSimulatingBid(bidRuntime.bid.ParentHash, bidRuntime)
+
+	simStart := time.Now()
+	var err error
+	defer func() {
+		if err == nil {
+			bidRuntime.duration = time.Since(simStart)
+		}
+		b.SetSimulatingBid(bidRuntime.bid.ParentHash, nil)
+	}()
+
+	// prepareWork will configure header with a suitable time according to consensus
 	work, err := b.workPreparer.prepareWork(&generateParams{
 		timestamp:  uint64(timestamp),
 		parentHash: bidRuntime.bid.ParentHash,
@@ -433,18 +469,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, timestamp int64, bidRuntim
 		return
 	}
 
-	var ctx = context.Background() // TODO(renee): interrupt by timeout
-
-	// TODO(renee) 改成一种import block的写法
 	for i, tx := range bidRuntime.bid.Txs {
 		select {
 		case signal := <-interruptCh:
 			log.Debug("bid simulation abort due to interruption", "reason", signalToErr(signal))
 			return
-
-		case <-ctx.Done():
-			log.Debug("bid simulation abort due to timeout")
-			break
 
 		case <-b.stopCh:
 			return
@@ -504,6 +533,8 @@ type BidRuntime struct {
 
 	packedBlockReward     *big.Int
 	packedValidatorReward *big.Int
+
+	duration time.Duration
 }
 
 func (r *BidRuntime) Valid() bool {
