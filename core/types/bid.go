@@ -36,7 +36,7 @@ func (b *Bid) Hash() common.Hash {
 }
 
 // BidIssue
-// TODO(renee-) predefine some code/message to help builder handle the error
+// TODO define some code/message to help builder handle the error
 type BidIssue struct {
 	BlockNumber uint64
 	ParentHash  common.Hash

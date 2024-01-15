@@ -131,7 +131,6 @@ const (
 	commitInterruptResubmit
 	commitInterruptTimeout
 	commitInterruptOutOfGas
-	commitInterruptNewBid
 )
 
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
