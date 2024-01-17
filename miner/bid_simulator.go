@@ -35,12 +35,15 @@ type SimulationWorkPreparer interface {
 	prepareWork(params *generateParams) (*environment, error)
 }
 
+// simBidReq is the request for simulating a bid
 type simBidReq struct {
 	bid         *BidRuntime
 	timestamp   int64
 	interruptCh chan int32
 }
 
+// bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
+// And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
 	config        *MevConfig
 	delayLeftOver time.Duration
@@ -317,6 +320,8 @@ func (b *bidSimulator) newBidLoop() {
 					commit(commitInterruptBetterBid, bidRuntime)
 					continue
 				}
+
+				continue
 			}
 
 			// simulatingBid must be better than bestBid, if newBid is better than simulatingBid, commit for simulation
@@ -405,7 +410,7 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
 		}
 
 		if _, ok := b.pending[parentHash][builder][bid.Hash()]; ok {
-			return errors.New("bid is already exists")
+			return errors.New("bid already exists")
 		}
 
 		if len(b.pending[parentHash][builder]) >= maxBidPerBuilder {

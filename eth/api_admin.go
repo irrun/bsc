@@ -139,8 +139,8 @@ func (api *AdminAPI) ImportChain(file string) (bool, error) {
 	return true, nil
 }
 
-// Running returns true if mev is running
-func (api *AdminAPI) Running() bool {
+// MevRunning returns true if mev is running
+func (api *AdminAPI) MevRunning() bool {
 	return api.eth.APIBackend.MevRunning()
 }
 

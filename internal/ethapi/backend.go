@@ -151,7 +151,6 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "mev",
 			Service:   NewMevAPI(apiBackend),
-			Public:    false,
 		},
 	}
 }

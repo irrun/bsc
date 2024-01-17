@@ -62,19 +62,16 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.Bid) error {
 
 	var wg sync.WaitGroup
 	for i, tx := range bid.Txs {
-		i := i
-		tx := tx
-
 		wg.Add(1)
 
-		go func() {
+		go func(i int, tx *types.Transaction) {
 			defer wg.Done()
 
 			_, err := types.Sender(signer, tx)
 			if err != nil {
 				bid.Txs[i] = nil
 			}
-		}()
+		}(i, tx)
 	}
 
 	wg.Wait()

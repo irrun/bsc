@@ -1188,7 +1188,7 @@ LOOP:
 // inTurn return true if the current worker is in turn.
 func (w *worker) inTurn() bool {
 	validator, _ := w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
-	return validator == w.etherbase()
+	return validator.Cmp(w.etherbase()) == 0
 }
 
 // commit runs any post-transaction state modifications, assembles the final block

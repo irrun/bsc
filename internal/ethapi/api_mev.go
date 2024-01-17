@@ -87,18 +87,15 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 
 	var wg sync.WaitGroup
 	for i, encodedTx := range bid.Txs {
-		i := i
-		encodedTx := encodedTx
-
 		wg.Add(1)
 
-		go func() {
+		go func(i int, encodedTx hexutil.Bytes) {
 			defer wg.Done()
 			tx := new(types.Transaction)
 			if err := tx.UnmarshalBinary(encodedTx); err == nil {
 				txs[i] = tx
 			}
-		}()
+		}(i, encodedTx)
 	}
 
 	wg.Wait()
