@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
 	"strconv"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	jsoniter "github.com/json-iterator/go"
 )
 
 const (
@@ -185,17 +185,17 @@ func (e *bidError) ErrorCode() int {
 }
 
 func parseSignature(args BidArgs) (common.Address, error) {
-	bid, err := jsoniter.Marshal(args.Bid)
+	bid, err := rlp.EncodeToBytes(args.Bid)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("fail to marshal bid, %v", err.Error())
 	}
 
-	sigature, err := hexutil.Decode(args.Signature)
+	signature, err := hexutil.Decode(args.Signature)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("fail to decode signature, %v", err.Error())
 	}
 
-	sigPublicKey, err := crypto.Ecrecover(crypto.Keccak256(bid), sigature)
+	sigPublicKey, err := crypto.Ecrecover(crypto.Keccak256(bid), signature)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("fail to recover signature, %v ", err.Error())
 	}
