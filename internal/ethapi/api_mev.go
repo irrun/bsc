@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
 	"strconv"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/utils"
 )
 
 const (
@@ -20,6 +20,10 @@ const (
 	MevNotRunningError   = -38002
 
 	TransferTxGasLimit = 25000
+)
+
+var (
+	batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
 )
 
 // BidArgs represents the arguments to submit a bid.
@@ -106,25 +110,25 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
 
-	var wg sync.WaitGroup
 	for i, encodedTx := range bid.Txs {
-		wg.Add(1)
+		i := i
+		encodedTx := encodedTx
+		batchRunner.AddTasks(
+			func() error {
+				tx := new(types.Transaction)
+				err := tx.UnmarshalBinary(encodedTx)
+				if err != nil {
+					return err
+				}
 
-		go func(i int, encodedTx hexutil.Bytes) {
-			defer wg.Done()
-			tx := new(types.Transaction)
-			if err := tx.UnmarshalBinary(encodedTx); err == nil {
 				bidTxs[i] = tx
-			}
-		}(i, encodedTx)
+				return nil
+			},
+		)
 	}
 
-	wg.Wait()
-
-	for i, _ := range bidTxs {
-		if bidTxs[i] == nil {
-			return common.Hash{}, newInvalidBidError("invalid tx in bid")
-		}
+	if err = batchRunner.Exec(); err != nil {
+		return common.Hash{}, newInvalidBidError("invalid tx in bid")
 	}
 
 	txs := make([]*types.Transaction, 0)

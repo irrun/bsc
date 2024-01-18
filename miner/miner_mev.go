@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/utils"
+)
+
+var (
+	batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
 )
 
 type BuilderConfig struct {
@@ -60,26 +64,21 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.Bid) error {
 
 	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(bid.BlockNumber)), uint64(time.Now().Unix()))
 
-	var wg sync.WaitGroup
-	for i, tx := range bid.Txs {
-		wg.Add(1)
+	for _, tx := range bid.Txs {
+		tx := tx
 
-		go func(i int, tx *types.Transaction) {
-			defer wg.Done()
-
+		batchRunner.AddTasks(func() error {
 			_, err := types.Sender(signer, tx)
 			if err != nil {
-				bid.Txs[i] = nil
+				return err
 			}
-		}(i, tx)
+
+			return nil
+		})
 	}
 
-	wg.Wait()
-
-	for i, _ := range bid.Txs {
-		if bid.Txs[i] == nil {
-			return fmt.Errorf("invalid tx in bid")
-		}
+	if err := batchRunner.Exec(); err != nil {
+		return fmt.Errorf("invalid tx in bid")
 	}
 
 	return miner.bidSimulator.sendBid(ctx, bid)
