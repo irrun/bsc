@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +18,8 @@ import (
 const (
 	InvalidBidParamError = -38001
 	MevNotRunningError   = -38002
+
+	TransferTxGasLimit = 25000
 )
 
 // BidArgs represents the arguments to submit a bid.
@@ -25,6 +28,9 @@ type BidArgs struct {
 	Bid *Bid
 	// signed signature of the bid
 	Signature string `json:"signature"`
+	// TransferTx is a flag to indicate whether to return txs in the bid
+	TransferTx        hexutil.Bytes `json:"transferTx,omitempty"`
+	TransferTxGasUsed uint64        `json:"transferTxGasUsed"`
 }
 
 // Bid represents a bid.
@@ -60,23 +66,38 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 	var (
 		bid           = args.Bid
 		currentHeader = m.b.CurrentHeader()
-		txs           = make([]*types.Transaction, len(bid.Txs))
+		bidTxs        = make([]*types.Transaction, len(bid.Txs))
 		builderFee    = big.NewInt(0)
+		transferTx    = new(types.Transaction)
 	)
 
 	// only support bidding for the next block not for the future block
 	if bid.BlockNumber != currentHeader.Number.Uint64()+1 {
-		return common.Hash{}, newBidError(fmt.Errorf("block number is stale"), InvalidBidParamError)
+		return common.Hash{}, newInvalidBidError("stale block number")
 	}
 
-	if bid.ParentHash != currentHeader.Hash() {
-		return common.Hash{}, newBidError(fmt.Errorf("non-aligned parent hash:%v", currentHeader.Hash()), InvalidBidParamError)
+	if bid.ParentHash.Cmp(currentHeader.Hash()) != 0 {
+		return common.Hash{},
+			newInvalidBidError("non-aligned parent hash:" + currentHeader.Hash().Hex())
 	}
 
 	if bid.BuilderFee != nil {
 		builderFee = bid.BuilderFee
 		if builderFee.Cmp(bid.GasFee) >= 0 {
-			return common.Hash{}, newBidError(fmt.Errorf("builder fee must be less than gas fee"), InvalidBidParamError)
+			return common.Hash{}, newInvalidBidError("builder fee must be less than gas fee")
+		}
+
+		if builderFee.Cmp(big.NewInt(0)) > 0 {
+			if args.TransferTxGasUsed >= TransferTxGasLimit {
+				return common.Hash{}, newInvalidBidError("transfer tx gas used must be less than " +
+					strconv.Itoa(TransferTxGasLimit))
+			}
+
+			if args.TransferTx != nil && len(args.TransferTx) != 0 {
+				if err := transferTx.UnmarshalBinary(args.TransferTx); err != nil {
+					return common.Hash{}, newInvalidBidError(fmt.Sprintf("unmarshal transfer tx err:%v", err))
+				}
+			}
 		}
 	}
 
@@ -93,27 +114,35 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 			defer wg.Done()
 			tx := new(types.Transaction)
 			if err := tx.UnmarshalBinary(encodedTx); err == nil {
-				txs[i] = tx
+				bidTxs[i] = tx
 			}
 		}(i, encodedTx)
 	}
 
 	wg.Wait()
 
-	for i, _ := range txs {
-		if txs[i] == nil {
-			return common.Hash{}, newBidError(fmt.Errorf("invalid tx in bid"), InvalidBidParamError)
+	for i, _ := range bidTxs {
+		if bidTxs[i] == nil {
+			return common.Hash{}, newInvalidBidError("invalid tx in bid")
 		}
+	}
+
+	txs := make([]*types.Transaction, 0)
+	txs = append(txs, bidTxs...)
+	gasFee := big.NewInt(0).Set(bid.GasFee)
+	if len(transferTx.Data()) != 0 {
+		txs = append(txs, transferTx)
+		gasFee.Add(gasFee, big.NewInt(0).Mul(big.NewInt(int64(args.TransferTxGasUsed)), transferTx.GasPrice()))
 	}
 
 	innerBid := &types.Bid{
 		Builder:     builder,
-		BlockNumber: args.Bid.BlockNumber,
-		ParentHash:  args.Bid.ParentHash,
+		BlockNumber: bid.BlockNumber,
+		ParentHash:  bid.ParentHash,
 		Txs:         txs,
-		GasUsed:     args.Bid.GasUsed,
-		GasFee:      args.Bid.GasFee,
-		Timestamp:   args.Bid.Timestamp,
+		GasUsed:     bid.GasUsed + args.TransferTxGasUsed,
+		GasFee:      gasFee,
+		Timestamp:   bid.Timestamp,
 		BuilderFee:  builderFee,
 	}
 
@@ -129,6 +158,10 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 // Running returns true if mev is running
 func (m *MevAPI) Running() bool {
 	return m.b.MevRunning()
+}
+
+func newInvalidBidError(message string) *bidError {
+	return newBidError(errors.New(message), InvalidBidParamError)
 }
 
 func newBidError(err error, code int) *bidError {
