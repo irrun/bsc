@@ -690,8 +690,13 @@ func (ec *Client) SendTransactionConditional(ctx context.Context, tx *types.Tran
 }
 
 // SendBid sends a bid
-func (ec *Client) SendBid(ctx context.Context, args ethapi.BidArgs) error {
-	return ec.c.CallContext(ctx, nil, "mev_sendBid", args)
+func (ec *Client) SendBid(ctx context.Context, args ethapi.BidArgs) (common.Hash, error) {
+	var hash common.Hash
+	err := ec.c.CallContext(ctx, &hash, "mev_sendBid", args)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return hash, nil
 }
 
 // ReportIssue reports an issue
