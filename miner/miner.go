@@ -177,7 +177,7 @@ func (miner *Miner) update() {
 			miner.bidSimulator.stop()
 		case <-miner.exitCh:
 			miner.worker.close()
-			miner.bidSimulator.stop()
+			miner.bidSimulator.close()
 			return
 		}
 	}

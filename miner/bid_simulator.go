@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -26,7 +27,7 @@ const (
 )
 
 var (
-	diffInTurn = big.NewInt(2) // Block difficulty for in-turn signatures
+	diffInTurn = big.NewInt(2) // the difficulty of a block that proposed by an in-turn validator
 
 	systemTxsGas = params.SystemTxsGas
 )
@@ -52,9 +53,12 @@ type bidSimulator struct {
 	workPreparer  SimulationWorkPreparer
 
 	running atomic.Bool // controlled by miner
-	stopCh  chan struct{}
+	exitCh  chan struct{}
 
 	bidReceiving atomic.Bool // controlled by config and eth.AdminAPI
+
+	chainHeadCh  chan core.ChainHeadEvent
+	chainHeadSub event.Subscription
 
 	sentryCli *ethclient.Client
 
@@ -89,6 +93,8 @@ func newBidSimulator(
 		chainConfig:   chainConfig,
 		chain:         chain,
 		workPreparer:  workPreparer,
+		exitCh:        make(chan struct{}),
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
 		builders:      make(map[common.Address]*ethclient.Client),
 		simBidCh:      make(chan *simBidReq),
 		newBidCh:      make(chan *types.Bid),
@@ -96,6 +102,8 @@ func newBidSimulator(
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 	}
+
+	b.chainHeadSub = chain.SubscribeChainHeadEvent(b.chainHeadCh)
 
 	if config.Enabled {
 		b.bidReceiving.Store(true)
@@ -133,21 +141,24 @@ func newBidSimulator(
 		log.Warn("BidSimulator: No valid builders")
 	}
 
+	go b.clearLoop()
+	go b.mainLoop()
+	go b.newBidLoop()
+
 	return b
 }
 
 func (b *bidSimulator) start() {
 	b.running.Store(true)
-	b.stopCh = make(chan struct{})
-
-	go b.clearLoop()
-	go b.mainLoop()
-	go b.newBidLoop()
 }
 
 func (b *bidSimulator) stop() {
 	b.running.Store(false)
-	close(b.stopCh)
+}
+
+func (b *bidSimulator) close() {
+	b.running.Store(false)
+	close(b.exitCh)
 }
 
 func (b *bidSimulator) isRunning() bool {
@@ -231,13 +242,22 @@ func (b *bidSimulator) GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime {
 }
 
 func (b *bidSimulator) mainLoop() {
+	defer b.chainHeadSub.Unsubscribe()
+
 	for {
 		select {
 		case req := <-b.simBidCh:
+			if !b.isRunning() {
+				continue
+			}
+
 			b.simBid(req.interruptCh, req.timestamp, req.bid)
 
 		// System stopped
-		case <-b.stopCh:
+		case <-b.exitCh:
+			return
+
+		case <-b.chainHeadSub.Err():
 			return
 		}
 	}
@@ -272,7 +292,7 @@ func (b *bidSimulator) newBidLoop() {
 		interruptCh = make(chan int32, 1)
 		select {
 		case b.simBidCh <- &simBidReq{interruptCh: interruptCh, bid: bidRuntime, timestamp: timestamp}:
-		case <-b.stopCh:
+		case <-b.exitCh:
 			return
 		}
 	}
@@ -280,6 +300,10 @@ func (b *bidSimulator) newBidLoop() {
 	for {
 		select {
 		case newBid := <-b.newBidCh:
+			if !b.isRunning() {
+				continue
+			}
+
 			// check the block reward and validator reward of the newBid
 			expectedBlockReward := newBid.GasFee
 			expectedValidatorReward := new(big.Int).Mul(expectedBlockReward, big.NewInt(b.config.ValidatorCommission))
@@ -293,7 +317,6 @@ func (b *bidSimulator) newBidLoop() {
 
 			bidRuntime := &BidRuntime{
 				bid:                     newBid,
-				env:                     nil,
 				expectedBlockReward:     expectedBlockReward,
 				expectedValidatorReward: expectedValidatorReward,
 				packedBlockReward:       big.NewInt(0),
@@ -334,7 +357,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-		case <-b.stopCh:
+		case <-b.exitCh:
 			return
 		}
 	}
@@ -347,11 +370,6 @@ func (b *bidSimulator) bidMustBefore() time.Time {
 }
 
 func (b *bidSimulator) clearLoop() {
-	chainHeadCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
-	chainHeadSub := b.chain.SubscribeChainHeadEvent(chainHeadCh)
-
-	defer chainHeadSub.Unsubscribe()
-
 	clearFn := func(parentHash common.Hash) {
 		b.pendingMu.Lock()
 		delete(b.pending, parentHash)
@@ -374,14 +392,12 @@ func (b *bidSimulator) clearLoop() {
 
 	for {
 		select {
-		case head := <-chainHeadCh:
+		case head := <-b.chainHeadCh:
+			if !b.isRunning() {
+				continue
+			}
+
 			clearFn(head.Block.ParentHash())
-
-		case <-b.stopCh:
-			return
-
-		case <-chainHeadSub.Err():
-			return
 		}
 	}
 }
@@ -393,38 +409,44 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
 		return errors.New("builder is not registered")
 	}
 
+	err := b.pendingCheck(bid)
+	if err != nil {
+		return err
+	}
+
+	// pass checking, add bid into alternative chan waiting for judge profit
+	b.newBidCh <- bid
+
+	return nil
+}
+
+func (b *bidSimulator) pendingCheck(bid *types.Bid) error {
 	var (
 		builder    = bid.Builder
 		parentHash = bid.ParentHash
 	)
 
+	b.pendingMu.Lock()
+	defer b.pendingMu.Unlock()
+
 	// check if bid exists or if builder sends too many bids
-	{
-		b.pendingMu.Lock()
-
-		if _, ok := b.pending[parentHash]; !ok {
-			b.pending[parentHash] = make(map[common.Address]map[common.Hash]struct{})
-		}
-
-		if _, ok := b.pending[parentHash][builder]; !ok {
-			b.pending[parentHash][builder] = make(map[common.Hash]struct{})
-		}
-
-		if _, ok := b.pending[parentHash][builder][bid.Hash()]; ok {
-			return errors.New("bid already exists")
-		}
-
-		if len(b.pending[parentHash][builder]) >= maxBidPerBuilder {
-			return errors.New("too many bids")
-		}
-
-		b.pending[parentHash][builder][bid.Hash()] = struct{}{}
-
-		b.pendingMu.Unlock()
+	if _, ok := b.pending[parentHash]; !ok {
+		b.pending[parentHash] = make(map[common.Address]map[common.Hash]struct{})
 	}
 
-	// pass checking, add bid into alternative chan waiting for judge profit
-	b.newBidCh <- bid
+	if _, ok := b.pending[parentHash][builder]; !ok {
+		b.pending[parentHash][builder] = make(map[common.Hash]struct{})
+	}
+
+	if _, ok := b.pending[parentHash][builder][bid.Hash()]; ok {
+		return errors.New("bid already exists")
+	}
+
+	if len(b.pending[parentHash][builder]) >= maxBidPerBuilder {
+		return errors.New("too many bids")
+	}
+
+	b.pending[parentHash][builder][bid.Hash()] = struct{}{}
 
 	return nil
 }
@@ -489,10 +511,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, timestamp int64, bidRuntim
 		return
 	}
 
-	if b.chainConfig.IsEuler(bidRuntime.env.header.Number) {
-		systemTxsGas = params.SystemTxsGas * 3
-	}
-
 	if bidRuntime.bid.GasUsed > (bidRuntime.env.header.GasLimit - systemTxsGas) {
 		err = errors.New("gas used exceeds gas limit")
 		return
@@ -504,8 +522,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, timestamp int64, bidRuntim
 			err = errors.New("simulation abort due to better bid arrived")
 			return
 
-		case <-b.stopCh:
-			err = errors.New("miner stopped")
+		case <-b.exitCh:
+			err = errors.New("miner exit")
 			return
 
 		default:
