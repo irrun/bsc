@@ -689,6 +689,13 @@ func (ec *Client) SendTransactionConditional(ctx context.Context, tx *types.Tran
 	return ec.c.CallContext(ctx, nil, "eth_sendRawTransactionConditional", hexutil.Encode(data), opts)
 }
 
+// MevRunning returns whether MEV is running
+func (ec *Client) MevRunning(ctx context.Context) (bool, error) {
+	var result bool
+	err := ec.c.CallContext(ctx, &result, "mev_running")
+	return result, err
+}
+
 // SendBid sends a bid
 func (ec *Client) SendBid(ctx context.Context, args ethapi.BidArgs) (common.Hash, error) {
 	var hash common.Hash
