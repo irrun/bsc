@@ -81,7 +81,8 @@ func newBidSimulator(
 	delayLeftOver time.Duration,
 	chainConfig *params.ChainConfig,
 	chain *core.BlockChain,
-	workPreparer SimulationWorkPreparer) *bidSimulator {
+	workPreparer SimulationWorkPreparer,
+) *bidSimulator {
 	b := &bidSimulator{
 		config:        config,
 		delayLeftOver: delayLeftOver,
@@ -581,7 +582,8 @@ func (r *BidRuntime) packedReward(validatorCommission int64) {
 }
 
 func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction) (
-	*types.Receipt, error) {
+	*types.Receipt, error,
+) {
 	var (
 		env  = r.env
 		snap = env.state.Snapshot()
@@ -590,7 +592,6 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
 		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
-
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)

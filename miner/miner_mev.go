@@ -11,9 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/utils"
 )
 
-var (
-	batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
-)
+var batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
 
 type BuilderConfig struct {
 	Address common.Address
@@ -33,19 +31,19 @@ func (miner *Miner) MevRunning() bool {
 	return miner.bidSimulator.isRunning() && miner.bidSimulator.receivingBid()
 }
 
-// StartMev starts mev, return error if it is already running.
+// StartMev starts mev.
 func (miner *Miner) StartMev() {
 	miner.bidSimulator.startReceivingBid()
 }
 
-// StopMev stops mev, always return nil.
+// StopMev stops mev.
 func (miner *Miner) StopMev() {
 	miner.bidSimulator.stopReceivingBid()
 }
 
 // AddBuilder adds a builder to the bid simulator.
-func (miner *Miner) AddBuilder(builder common.Address, builderUrl string) error {
-	return miner.bidSimulator.AddBuilder(builder, builderUrl)
+func (miner *Miner) AddBuilder(builder common.Address, url string) error {
+	return miner.bidSimulator.AddBuilder(builder, url)
 }
 
 // RemoveBuilder removes a builder from the bid simulator.

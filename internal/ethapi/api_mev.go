@@ -32,9 +32,10 @@ type BidArgs struct {
 	Bid *Bid
 	// signed signature of the bid
 	Signature string `json:"signature"`
-	// TransferTx is a flag to indicate whether to return txs in the bid
-	TransferTx        hexutil.Bytes `json:"transferTx,omitempty"`
-	TransferTxGasUsed uint64        `json:"transferTxGasUsed"`
+
+	// PayBidTx pays to builder
+	PayBidTx        hexutil.Bytes `json:"payBidTx,omitempty"`
+	PayBidTxGasUsed uint64        `json:"payBidTxGasUsed"`
 }
 
 // Bid represents a bid.
@@ -72,7 +73,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		currentHeader = m.b.CurrentHeader()
 		bidTxs        = make([]*types.Transaction, len(bid.Txs))
 		builderFee    = big.NewInt(0)
-		transferTx    = new(types.Transaction)
+		payBidTx      = new(types.Transaction)
 	)
 
 	// only support bidding for the next block not for the future block
@@ -80,32 +81,35 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		return common.Hash{}, newInvalidBidError("stale block number")
 	}
 
-	if bid.ParentHash.Cmp(currentHeader.Hash()) != 0 {
-		return common.Hash{},
-			newInvalidBidError("non-aligned parent hash:" + currentHeader.Hash().Hex())
+	if bid.ParentHash == currentHeader.Hash() {
+		return common.Hash{}, newInvalidBidError(fmt.Sprintf("non-aligned parent hash: %v", currentHeader.Hash()))
 	}
 
 	if bid.BuilderFee != nil {
 		builderFee = bid.BuilderFee
+		if builderFee.Cmp(big.NewInt(0)) < 0 {
+			return common.Hash{}, newInvalidBidError("builder fee must be greater than 0")
+		}
+
 		if builderFee.Cmp(bid.GasFee) >= 0 {
 			return common.Hash{}, newInvalidBidError("builder fee must be less than gas fee")
 		}
 
 		if builderFee.Cmp(big.NewInt(0)) > 0 {
-			if args.TransferTxGasUsed >= TransferTxGasLimit {
+			if args.PayBidTxGasUsed >= TransferTxGasLimit {
 				return common.Hash{}, newInvalidBidError("transfer tx gas used must be less than " +
 					strconv.Itoa(TransferTxGasLimit))
 			}
 
-			if args.TransferTx != nil && len(args.TransferTx) != 0 {
-				if err := transferTx.UnmarshalBinary(args.TransferTx); err != nil {
+			if len(args.PayBidTx) != 0 {
+				if err := payBidTx.UnmarshalBinary(args.PayBidTx); err != nil {
 					return common.Hash{}, newInvalidBidError(fmt.Sprintf("unmarshal transfer tx err:%v", err))
 				}
 			}
 		}
 	}
 
-	builder, err := parseSignature(args)
+	builder, err := ParseBidSignature(args)
 	if err != nil {
 		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
@@ -134,9 +138,11 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 	txs := make([]*types.Transaction, 0)
 	txs = append(txs, bidTxs...)
 	gasFee := big.NewInt(0).Set(bid.GasFee)
-	if len(transferTx.Data()) != 0 {
-		txs = append(txs, transferTx)
-		gasFee.Add(gasFee, big.NewInt(0).Mul(big.NewInt(int64(args.TransferTxGasUsed)), transferTx.GasPrice()))
+
+	if len(payBidTx.Data()) != 0 {
+		txs = append(txs, payBidTx)
+		// TODO(renee) fix bug
+		gasFee.Add(gasFee, big.NewInt(0).Mul(big.NewInt(int64(args.PayBidTxGasUsed)), payBidTx.GasPrice()))
 	}
 
 	innerBid := &types.Bid{
@@ -144,9 +150,8 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		BlockNumber: bid.BlockNumber,
 		ParentHash:  bid.ParentHash,
 		Txs:         txs,
-		GasUsed:     bid.GasUsed + args.TransferTxGasUsed,
+		GasUsed:     bid.GasUsed + args.PayBidTxGasUsed,
 		GasFee:      gasFee,
-		Timestamp:   bid.Timestamp,
 		BuilderFee:  builderFee,
 	}
 
@@ -188,25 +193,25 @@ func (e *bidError) ErrorCode() int {
 	return e.code
 }
 
-func parseSignature(args BidArgs) (common.Address, error) {
+func ParseBidSignature(args BidArgs) (common.Address, error) {
 	bid, err := rlp.EncodeToBytes(args.Bid)
 	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to marshal bid, %v", err.Error())
+		return common.Address{}, fmt.Errorf("fail to encode bid, %v", err)
 	}
 
 	signature, err := hexutil.Decode(args.Signature)
 	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to decode signature, %v", err.Error())
+		return common.Address{}, fmt.Errorf("fail to decode signature, %v", err)
 	}
 
 	sigPublicKey, err := crypto.Ecrecover(crypto.Keccak256(bid), signature)
 	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to recover signature, %v ", err.Error())
+		return common.Address{}, fmt.Errorf("fail to recover signature, %v ", err)
 	}
 
 	pk, err := crypto.UnmarshalPubkey(sigPublicKey)
 	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to unmarshal pubkey, %v", err.Error())
+		return common.Address{}, fmt.Errorf("fail to unmarshal pubkey, %v", err)
 	}
 
 	return crypto.PubkeyToAddress(*pk), nil

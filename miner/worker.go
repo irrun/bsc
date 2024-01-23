@@ -657,7 +657,8 @@ func (w *worker) resultLoop() {
 
 // makeEnv creates a new environment for the sealing block.
 func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address,
-	prevEnv *environment) (*environment, error) {
+	prevEnv *environment,
+) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
 	state, err := w.chain.StateAtWithSharedPool(parent.Root)
@@ -717,7 +718,8 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, rec
 }
 
 func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
-	interruptCh chan int32, stopTimer *time.Timer) error {
+	interruptCh chan int32, stopTimer *time.Timer,
+) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -738,7 +740,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	//prefetch txs from all pending txs
+	// prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {
