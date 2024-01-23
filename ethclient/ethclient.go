@@ -689,7 +689,12 @@ func (ec *Client) SendTransactionConditional(ctx context.Context, tx *types.Tran
 	return ec.c.CallContext(ctx, nil, "eth_sendRawTransactionConditional", hexutil.Encode(data), opts)
 }
 
-// ReportIssue sends a issue
+// SendBid sends a bid
+func (ec *Client) SendBid(ctx context.Context, args ethapi.BidArgs) error {
+	return ec.c.CallContext(ctx, nil, "mev_sendBid", args)
+}
+
+// ReportIssue reports an issue
 func (ec *Client) ReportIssue(ctx context.Context, args *types.BidIssue) error {
 	return ec.c.CallContext(ctx, nil, "mev_reportIssue", args)
 }
