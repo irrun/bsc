@@ -84,9 +84,11 @@ func (b *Bid) Hash() common.Hash {
 	return h
 }
 
-// BidIssue
-// TODO define some code/message to help builder handle the error
+// BidIssue represents a bid issue.
 type BidIssue struct {
+	// TODO put validator and builder here or parsing by header?
+	Validator   common.Address
+	Builder     common.Address
 	BlockNumber uint64
 	ParentHash  common.Hash
 	BidHash     common.Hash

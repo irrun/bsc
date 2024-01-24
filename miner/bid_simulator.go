@@ -565,6 +565,8 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
 		cli.ReportIssue(context.Background(), &types.BidIssue{
+			Validator:   bidRuntime.env.header.Coinbase,
+			Builder:     bidRuntime.bid.Builder,
 			BlockNumber: bidRuntime.bid.BlockNumber,
 			ParentHash:  bidRuntime.bid.ParentHash,
 			Message:     err.Error(),
