@@ -114,6 +114,8 @@ type Backend interface {
 	RemoveBuilder(builder common.Address) error
 	// SendBid receives bid from the builders.
 	SendBid(ctx context.Context, bid *types.Bid) error
+	// Signer returns the (signer) of the given block number.
+	Signer(blockNumber int64) types.Signer
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {

@@ -8,10 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/utils"
 )
-
-var batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
 
 type BuilderConfig struct {
 	Address common.Address
@@ -60,24 +57,9 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.Bid) error {
 			common.PrettyDuration(timeout))
 	}
 
-	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(bid.BlockNumber)), uint64(time.Now().Unix()))
-
-	for _, tx := range bid.Txs {
-		tx := tx
-
-		batchRunner.AddTasks(func() error {
-			_, err := types.Sender(signer, tx)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-	}
-
-	if err := batchRunner.Exec(); err != nil {
-		return fmt.Errorf("invalid tx in bid")
-	}
-
 	return miner.bidSimulator.sendBid(ctx, bid)
+}
+
+func (miner *Miner) Signer(blockNumber int64) types.Signer {
+	return types.MakeSigner(miner.worker.chainConfig, big.NewInt(blockNumber), uint64(time.Now().Unix()))
 }

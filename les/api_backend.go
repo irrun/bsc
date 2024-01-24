@@ -349,3 +349,31 @@ func (b *LesApiBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 func (b *LesApiBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*core.Message, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
 }
+
+func (b *LesApiBackend) MevRunning() bool {
+	return false
+}
+
+func (b *LesApiBackend) StartMev() {
+	return
+}
+
+func (b *LesApiBackend) StopMev() {
+	return
+}
+
+func (b *LesApiBackend) AddBuilder(builder common.Address, url string) error {
+	return nil
+}
+
+func (b *LesApiBackend) RemoveBuilder(builder common.Address) error {
+	return nil
+}
+
+func (b *LesApiBackend) SendBid(ctx context.Context, bid *types.Bid) error {
+	return nil
+}
+
+func (b *LesApiBackend) Signer(blockNumber int64) types.Signer {
+	return nil
+}

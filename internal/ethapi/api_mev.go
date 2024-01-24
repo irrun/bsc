@@ -6,30 +6,38 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync"
+
+	"github.com/panjf2000/ants/v2"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/utils"
 )
 
 const (
 	InvalidBidParamError = -38001
 	MevNotRunningError   = -38002
-
-	TransferTxGasLimit = 25000
+	MevBusyError         = -38003
 )
 
-var batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
+const (
+	MevRoutineLimit    = 10000
+	TransferTxGasLimit = 25000
+)
 
 // MevAPI implements the interfaces that defined in the BEP-322.
 // It offers methods for the interaction between builders and validators.
 type MevAPI struct {
 	b Backend
+
+	antsPool *ants.Pool
 }
 
 // NewMevAPI creates a new MevAPI.
 func NewMevAPI(b Backend) *MevAPI {
-	return &MevAPI{b}
+	antsPool, _ := ants.NewPool(MevRoutineLimit)
+
+	return &MevAPI{b, antsPool}
 }
 
 // SendBid receives bid from the builders.
@@ -86,31 +94,51 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
 
+	if m.antsPool.Cap()-m.antsPool.Running() < len(bid.Txs) {
+		return common.Hash{}, newBidError(errors.New("mev service busy"), MevBusyError)
+	}
+
+	signer := m.b.Signer(int64(bid.BlockNumber))
+
+	var wg sync.WaitGroup
 	for i, encodedTx := range bid.Txs {
 		i := i
 		encodedTx := encodedTx
-		batchRunner.AddTasks(
-			func() error {
-				tx := new(types.Transaction)
-				err := tx.UnmarshalBinary(encodedTx)
-				if err != nil {
-					return err
-				}
+		wg.Add(1)
 
-				bidTxs[i] = tx
-				return nil
-			},
-		)
+		err = m.antsPool.Submit(func() {
+			defer wg.Done()
+
+			var er error
+			tx := new(types.Transaction)
+			er = tx.UnmarshalBinary(encodedTx)
+			if er != nil {
+				return
+			}
+
+			_, er = types.Sender(signer, tx)
+			if er != nil {
+				return
+			}
+
+			bidTxs[i] = tx
+		})
+
+		if err != nil {
+			return common.Hash{}, newBidError(errors.New("mev service busy"), MevBusyError)
+		}
 	}
 
-	if err = batchRunner.Exec(); err != nil {
-		return common.Hash{}, newInvalidBidError("invalid tx in bid")
+	wg.Wait()
+
+	for _, v := range bidTxs {
+		if v == nil {
+			return common.Hash{}, newInvalidBidError("invalid tx in bid")
+		}
 	}
 
 	txs := make([]*types.Transaction, 0)
 	txs = append(txs, bidTxs...)
-	gasFee := big.NewInt(0).Set(bid.GasFee)
-
 	if len(payBidTx.Data()) != 0 {
 		txs = append(txs, payBidTx)
 	}
@@ -121,7 +149,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		ParentHash:  bid.ParentHash,
 		Txs:         txs,
 		GasUsed:     bid.GasUsed + args.PayBidTxGasUsed,
-		GasFee:      gasFee,
+		GasFee:      bid.GasFee,
 		BuilderFee:  builderFee,
 	}
 

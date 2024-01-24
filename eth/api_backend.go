@@ -460,3 +460,7 @@ func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.Bid) error {
 
 	return b.Miner().SendBid(ctx, bid)
 }
+
+func (b *EthAPIBackend) Signer(blockNumber int64) types.Signer {
+	return b.Miner().Signer(blockNumber)
+}
