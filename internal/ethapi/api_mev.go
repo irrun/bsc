@@ -8,10 +8,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/utils"
 )
 
@@ -22,32 +19,7 @@ const (
 	TransferTxGasLimit = 25000
 )
 
-var (
-	batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
-)
-
-// BidArgs represents the arguments to submit a bid.
-type BidArgs struct {
-	// bid
-	Bid *Bid
-	// signed signature of the bid
-	Signature string `json:"signature"`
-
-	// PayBidTx pays to builder
-	PayBidTx        hexutil.Bytes `json:"payBidTx,omitempty"`
-	PayBidTxGasUsed uint64        `json:"payBidTxGasUsed"`
-}
-
-// Bid represents a bid.
-type Bid struct {
-	BlockNumber uint64          `json:"blockNumber"`
-	ParentHash  common.Hash     `json:"parentHash"`
-	Txs         []hexutil.Bytes `json:"txs,omitempty"`
-	GasUsed     uint64          `json:"gasUsed"`
-	GasFee      *big.Int        `json:"gasFee"`
-	Timestamp   int64           `json:"timestamp"`
-	BuilderFee  *big.Int        `json:"builderFee"`
-}
+var batchRunner = utils.NewBatchRunner().WithConcurrencyLimit(1024)
 
 // MevAPI implements the interfaces that defined in the BEP-322.
 // It offers methods for the interaction between builders and validators.
@@ -63,7 +35,7 @@ func NewMevAPI(b Backend) *MevAPI {
 // SendBid receives bid from the builders.
 // If mev is not running or bid is invalid, return error.
 // Otherwise, creates a builder bid for the given argument, submit it to the miner.
-func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error) {
+func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
 	if !m.b.MevRunning() {
 		return common.Hash{}, newBidError(errors.New("mev is not running"), MevNotRunningError)
 	}
@@ -109,7 +81,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 		}
 	}
 
-	builder, err := ParseBidSignature(args)
+	builder, err := types.ParseBidSignature(args)
 	if err != nil {
 		return common.Hash{}, newBidError(err, InvalidBidParamError)
 	}
@@ -141,8 +113,6 @@ func (m *MevAPI) SendBid(ctx context.Context, args BidArgs) (common.Hash, error)
 
 	if len(payBidTx.Data()) != 0 {
 		txs = append(txs, payBidTx)
-		// TODO(renee) fix bug
-		gasFee.Add(gasFee, big.NewInt(0).Mul(big.NewInt(int64(args.PayBidTxGasUsed)), payBidTx.GasPrice()))
 	}
 
 	innerBid := &types.Bid{
@@ -191,28 +161,4 @@ type bidError struct {
 // See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
 func (e *bidError) ErrorCode() int {
 	return e.code
-}
-
-func ParseBidSignature(args BidArgs) (common.Address, error) {
-	bid, err := rlp.EncodeToBytes(args.Bid)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to encode bid, %v", err)
-	}
-
-	signature, err := hexutil.Decode(args.Signature)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to decode signature, %v", err)
-	}
-
-	sigPublicKey, err := crypto.Ecrecover(crypto.Keccak256(bid), signature)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to recover signature, %v ", err)
-	}
-
-	pk, err := crypto.UnmarshalPubkey(sigPublicKey)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to unmarshal pubkey, %v", err)
-	}
-
-	return crypto.PubkeyToAddress(*pk), nil
 }
