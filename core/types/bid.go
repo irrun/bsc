@@ -76,10 +76,8 @@ func (b *Bid) Hash() common.Hash {
 // BidIssue represents a bid issue.
 type BidIssue struct {
 	// TODO put validator and builder here or parsing by header?
-	Validator   common.Address
-	Builder     common.Address
-	BlockNumber uint64
-	ParentHash  common.Hash
-	BidHash     common.Hash
-	Message     string
+	Validator common.Address
+	Builder   common.Address
+	BidHash   common.Hash
+	Message   string
 }
