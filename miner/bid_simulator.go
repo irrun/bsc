@@ -89,7 +89,6 @@ type bidSimulator struct {
 	builders   map[common.Address]*builderclient.Client
 
 	// channels
-	// TODO(renee) some buffer with ch?
 	simBidCh chan *simBidReq
 	newBidCh chan *types.Bid
 
@@ -120,7 +119,7 @@ func newBidSimulator(
 		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
 		builders:      make(map[common.Address]*builderclient.Client),
 		simBidCh:      make(chan *simBidReq),
-		newBidCh:      make(chan *types.Bid),
+		newBidCh:      make(chan *types.Bid, 100),
 		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
@@ -425,7 +424,6 @@ func (b *bidSimulator) clearLoop() {
 		b.simBidMu.Unlock()
 	}
 
-	// TODO(renee) check more suitable clear condition
 	for head := range b.chainHeadCh {
 		if !b.isRunning() {
 			continue
