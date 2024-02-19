@@ -260,11 +260,25 @@ func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {
 	return b.bestBid[prevBlockHash]
 }
 
+func (b *bidSimulator) SetSimulatingBid(prevBlockHash common.Hash, bid *BidRuntime) {
+	b.simBidMu.Lock()
+	defer b.simBidMu.Unlock()
+
+	b.simulatingBid[prevBlockHash] = bid
+}
+
 func (b *bidSimulator) GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime {
 	b.simBidMu.RLock()
 	defer b.simBidMu.RUnlock()
 
 	return b.simulatingBid[prevBlockHash]
+}
+
+func (b *bidSimulator) RemoveSimulatingBid(prevBlockHash common.Hash) {
+	b.simBidMu.Lock()
+	defer b.simBidMu.Unlock()
+
+	delete(b.simulatingBid, prevBlockHash)
 }
 
 func (b *bidSimulator) mainLoop() {
@@ -499,9 +513,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	)
 
 	// ensure simulation exited then start next simulation
-	// TODO(renee) lock last too long
-	b.simBidMu.Lock()
-	b.simulatingBid[parentHash] = bidRuntime
+	b.SetSimulatingBid(parentHash, bidRuntime)
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -530,8 +542,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			bidRuntime.duration = time.Since(simStart)
 		}
 
-		delete(b.simulatingBid, parentHash)
-		b.simBidMu.Unlock()
+		b.RemoveSimulatingBid(parentHash)
 	}(time.Now())
 
 	// prepareWork will configure header with a suitable time according to consensus
