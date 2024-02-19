@@ -121,6 +121,8 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.BidArgs) (common.Has
 		innerBid.BuilderFee = bid.Bid.BuilderFee
 	}
 
+	innerBid.SetHash(bid.Bid.Hash())
+
 	bidMustBefore := miner.bidSimulator.bidMustBefore(bid.Bid.ParentHash)
 	timeout := time.Until(bidMustBefore)
 

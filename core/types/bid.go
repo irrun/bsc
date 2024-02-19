@@ -33,6 +33,11 @@ type RawBid struct {
 	BuilderFee  *big.Int        `json:"builderFee"`
 }
 
+// Hash returns the hash of the bid.
+func (b *RawBid) Hash() common.Hash {
+	return rlpHash(b)
+}
+
 func EcrecoverBuilder(args *BidArgs) (common.Address, error) {
 	bid, err := rlp.EncodeToBytes(args.Bid)
 	if err != nil {
@@ -61,16 +66,18 @@ type Bid struct {
 	hash atomic.Value
 }
 
-// Hash returns the transaction hash.
+// SetHash sets the bid hash.
+func (b *Bid) SetHash(h common.Hash) {
+	b.hash.Store(h)
+}
+
+// Hash returns the bid hash.
 func (b *Bid) Hash() common.Hash {
 	if hash := b.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
 
-	h := rlpHash(b)
-
-	b.hash.Store(h)
-	return h
+	return common.Hash{}
 }
 
 // BidIssue represents a bid issue.
