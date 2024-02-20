@@ -4,14 +4,20 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sync"
 	"time"
+
+	"github.com/panjf2000/ants/v2"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
-const MevRoutineLimit = 10000
+const (
+	MevRoutineLimit              = 10000
+	TxDecodeConcurrencyForPerBid = 5
+	CheckTxDecodeInterval        = 3 * time.Millisecond
+)
 
 type BuilderConfig struct {
 	Address common.Address
@@ -57,48 +63,80 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.BidArgs) (common.Has
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature:%v", err))
 	}
 
-	bidTxs := make([]*types.Transaction, len(bid.Bid.Txs))
+	bidTxs := make([]*BidTx, len(bid.Bid.Txs))
 	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(bid.Bid.BlockNumber)), uint64(time.Now().Unix()))
 
-	var wg sync.WaitGroup
-	for i, encodedTx := range bid.Bid.Txs {
-		i := i
-		encodedTx := encodedTx
-		wg.Add(1)
+	txChan := make(chan int, TxDecodeConcurrencyForPerBid)
+	for i := 0; i < TxDecodeConcurrencyForPerBid; i++ {
+		go func() {
+			for {
+				select {
+				case txIndex := <-txChan:
+					err = miner.antsPool.Submit(func() {
+						encodedTx := bid.Bid.Txs[txIndex]
+						tx := new(types.Transaction)
+						er := tx.UnmarshalBinary(encodedTx)
+						if er != nil {
+							bidTxs[txIndex] = &BidTx{tx: nil, err: er}
+							return
+						}
 
-		err = miner.antsPool.Submit(func() {
-			defer wg.Done()
+						_, er = types.Sender(signer, tx)
+						if er != nil {
+							bidTxs[txIndex] = &BidTx{tx: nil, err: er}
+							return
+						}
 
-			var er error
-			tx := new(types.Transaction)
-			er = tx.UnmarshalBinary(encodedTx)
-			if er != nil {
-				return
+						bidTxs[txIndex] = &BidTx{tx: tx, err: nil}
+					})
+
+					if err != nil {
+						bidTxs[txIndex] = &BidTx{tx: nil, err: err}
+					}
+				case <-ctx.Done():
+					return
+				}
 			}
+		}()
+	}
 
-			_, er = types.Sender(signer, tx)
-			if er != nil {
-				return
-			}
-
-			bidTxs[i] = tx
-		})
-
-		if err != nil {
-			return common.Hash{}, types.ErrMevBusy
+	for i := 0; i < len(bid.Bid.Txs); i++ {
+		select {
+		case txChan <- i:
 		}
 	}
 
-	wg.Wait()
+	for {
+		if len(bidTxs) == len(bid.Bid.Txs) {
+			break
+		}
+		time.Sleep(CheckTxDecodeInterval)
+		log.Debug("waiting for txs to be decoded")
+	}
 
+	txs := make([]*types.Transaction, 0)
 	for _, v := range bidTxs {
 		if v == nil {
 			return common.Hash{}, types.NewInvalidBidError("invalid tx in bid")
 		}
+
+		if v.err != nil {
+			if v.err == ants.ErrPoolClosed || v.err == ants.ErrPoolOverload {
+				return common.Hash{}, types.ErrMevBusy
+			}
+
+			return common.Hash{}, types.NewInvalidBidError("invalid tx in bid")
+		}
+
+		if v.tx != nil {
+			txs = append(txs, v.tx)
+		}
 	}
 
-	txs := make([]*types.Transaction, 0)
-	txs = append(txs, bidTxs...)
+	if len(txs) != len(bid.Bid.Txs) {
+		return common.Hash{}, types.NewInvalidBidError("invalid tx in bid")
+	}
+
 	if len(bid.PayBidTx) != 0 {
 		var payBidTx = new(types.Transaction)
 		if err = payBidTx.UnmarshalBinary(bid.PayBidTx); err != nil {
@@ -138,4 +176,9 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.BidArgs) (common.Has
 	}
 
 	return innerBid.Hash(), nil
+}
+
+type BidTx struct {
+	tx  *types.Transaction
+	err error
 }
