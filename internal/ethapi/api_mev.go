@@ -40,6 +40,10 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		currentHeader = m.b.CurrentHeader()
 	)
 
+	if bid == nil {
+		return common.Hash{}, types.NewInvalidBidError("bid should not be nil")
+	}
+
 	// only support bidding for the next block not for the future block
 	if bid.BlockNumber != currentHeader.Number.Uint64()+1 {
 		return common.Hash{}, types.NewInvalidBidError("stale block number or block in future")

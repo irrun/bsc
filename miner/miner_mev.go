@@ -145,21 +145,7 @@ func (miner *Miner) SendBid(ctx context.Context, bid *types.BidArgs) (common.Has
 		txs = append(txs, payBidTx)
 	}
 
-	innerBid := &types.Bid{
-		Builder:     builder,
-		BlockNumber: bid.Bid.BlockNumber,
-		ParentHash:  bid.Bid.ParentHash,
-		Txs:         txs,
-		GasUsed:     bid.Bid.GasUsed + bid.PayBidTxGasUsed,
-		GasFee:      bid.Bid.GasFee,
-		BuilderFee:  big.NewInt(0),
-	}
-
-	if bid.Bid.BuilderFee != nil {
-		innerBid.BuilderFee = bid.Bid.BuilderFee
-	}
-
-	innerBid.SetHash(bid.Bid.Hash())
+	innerBid := types.FromRawBid(bid.Bid, builder, txs, bid.PayBidTxGasUsed)
 
 	bidMustBefore := miner.bidSimulator.bidMustBefore(bid.Bid.ParentHash)
 	timeout := time.Until(bidMustBefore)

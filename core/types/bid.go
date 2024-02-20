@@ -31,11 +31,20 @@ type RawBid struct {
 	GasUsed     uint64          `json:"gasUsed"`
 	GasFee      *big.Int        `json:"gasFee"`
 	BuilderFee  *big.Int        `json:"builderFee"`
+
+	hash atomic.Value
 }
 
 // Hash returns the hash of the bid.
 func (b *RawBid) Hash() common.Hash {
-	return rlpHash(b)
+	if hash := b.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	h := rlpHash(b)
+	b.hash.Store(h)
+
+	return h
 }
 
 func EcrecoverBuilder(args *BidArgs) (common.Address, error) {
@@ -62,27 +71,35 @@ type Bid struct {
 	GasFee      *big.Int
 	BuilderFee  *big.Int
 
-	// caches
-	hash atomic.Value
+	rawBid RawBid
 }
 
-// SetHash sets the bid hash.
-func (b *Bid) SetHash(h common.Hash) {
-	b.hash.Store(h)
+func FromRawBid(bid *RawBid, builder common.Address, txs Transactions, payBidTxGasUsed uint64) *Bid {
+	b := &Bid{
+		Builder:     builder,
+		BlockNumber: bid.BlockNumber,
+		ParentHash:  bid.ParentHash,
+		Txs:         txs,
+		GasUsed:     bid.GasUsed + payBidTxGasUsed,
+		GasFee:      bid.GasFee,
+		BuilderFee:  big.NewInt(0),
+		rawBid:      *bid,
+	}
+
+	if bid.BuilderFee != nil {
+		b.BuilderFee = bid.BuilderFee
+	}
+
+	return b
 }
 
 // Hash returns the bid hash.
 func (b *Bid) Hash() common.Hash {
-	if hash := b.hash.Load(); hash != nil {
-		return hash.(common.Hash)
-	}
-
-	return common.Hash{}
+	return b.rawBid.Hash()
 }
 
 // BidIssue represents a bid issue.
 type BidIssue struct {
-	// TODO put validator and builder here or parsing by header?
 	Validator common.Address
 	Builder   common.Address
 	BidHash   common.Hash
