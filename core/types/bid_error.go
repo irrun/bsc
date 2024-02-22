@@ -11,7 +11,7 @@ const (
 )
 
 var (
-	ErrMevNotRunning = newBidError(errors.New("the validator stop serving mev for now, try again later"), MevNotRunningError)
+	ErrMevNotRunning = newBidError(errors.New("the validator stop accepting bids for now, try again later"), MevNotRunningError)
 	ErrMevBusy       = newBidError(errors.New("the validator is working on too many bids, try again later"), MevBusyError)
 	ErrMevNotInTurn  = newBidError(errors.New("the validator is not in-turn to propose currently, try again later"), MevNotInTurnError)
 )

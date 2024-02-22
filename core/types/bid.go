@@ -8,22 +8,66 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
 )
+
+const TxDecodeConcurrencyForPerBid = 5
 
 // BidArgs represents the arguments to submit a bid.
 type BidArgs struct {
-	// bid
-	Bid *RawBid
-	// signed signature of the bid
+	// RawBid from builder directly
+	RawBid *RawBid
+	// Signature of the bid from builder
 	Signature hexutil.Bytes `json:"signature"`
 
-	// PayBidTx pays to builder
+	// PayBidTx is a payment tx to builder from sentry, which is optional
 	PayBidTx        hexutil.Bytes `json:"payBidTx"`
 	PayBidTxGasUsed uint64        `json:"payBidTxGasUsed"`
 }
 
-// RawBid represents a raw bid.
+func (b *BidArgs) EcrecoverSender() (common.Address, error) {
+	pk, err := crypto.SigToPub(b.RawBid.Hash().Bytes(), b.Signature)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return crypto.PubkeyToAddress(*pk), nil
+}
+
+func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
+	txs, err := b.RawBid.DecodeTxs(signer)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(b.PayBidTx) != 0 {
+		var payBidTx = new(Transaction)
+		err = payBidTx.UnmarshalBinary(b.PayBidTx)
+		if err != nil {
+			return nil, err
+		}
+
+		txs = append(txs, payBidTx)
+	}
+
+	bid := &Bid{
+		Builder:     builder,
+		BlockNumber: b.RawBid.BlockNumber,
+		ParentHash:  b.RawBid.ParentHash,
+		Txs:         txs,
+		GasUsed:     b.RawBid.GasUsed + b.PayBidTxGasUsed,
+		GasFee:      b.RawBid.GasFee,
+		BuilderFee:  b.RawBid.BuilderFee,
+		rawBid:      *b.RawBid,
+	}
+
+	if bid.BuilderFee == nil {
+		bid.BuilderFee = big.NewInt(0)
+	}
+
+	return bid, nil
+}
+
+// RawBid represents a raw bid from builder directly.
 type RawBid struct {
 	BlockNumber uint64          `json:"blockNumber"`
 	ParentHash  common.Hash     `json:"parentHash"`
@@ -33,6 +77,62 @@ type RawBid struct {
 	BuilderFee  *big.Int        `json:"builderFee"`
 
 	hash atomic.Value
+}
+
+func (b *RawBid) DecodeTxs(signer Signer) ([]*Transaction, error) {
+	if len(b.Txs) == 0 {
+		return []*Transaction{}, nil
+	}
+
+	txChan := make(chan int, TxDecodeConcurrencyForPerBid)
+	bidTxs := make([]*Transaction, len(b.Txs))
+	decode := func(txBytes hexutil.Bytes) (*Transaction, error) {
+		tx := new(Transaction)
+		err := tx.UnmarshalBinary(txBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = Sender(signer, tx)
+		if err != nil {
+			return nil, err
+		}
+
+		return tx, nil
+	}
+
+	errChan := make(chan error, TxDecodeConcurrencyForPerBid)
+	for i := 0; i < TxDecodeConcurrencyForPerBid; i++ {
+		go func() {
+			for txIndex := range txChan {
+				txBytes := b.Txs[txIndex]
+				tx, err := decode(txBytes)
+				if err != nil {
+					errChan <- err
+					return
+				}
+
+				bidTxs[txIndex] = tx
+			}
+
+			errChan <- nil
+		}()
+	}
+
+	for i := 0; i < len(b.Txs); i++ {
+		txChan <- i
+	}
+
+	close(txChan)
+
+	for i := 0; i < TxDecodeConcurrencyForPerBid; i++ {
+		err := <-errChan
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode tx, %v", err)
+		}
+	}
+
+	return bidTxs, nil
 }
 
 // Hash returns the hash of the bid.
@@ -47,20 +147,6 @@ func (b *RawBid) Hash() common.Hash {
 	return h
 }
 
-func EcrecoverBuilder(args *BidArgs) (common.Address, error) {
-	bid, err := rlp.EncodeToBytes(args.Bid)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to encode bid, %v", err)
-	}
-
-	pk, err := crypto.SigToPub(crypto.Keccak256(bid), args.Signature)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fail to extract pubkey, %v", err)
-	}
-
-	return crypto.PubkeyToAddress(*pk), nil
-}
-
 // Bid represents a bid.
 type Bid struct {
 	Builder     common.Address
@@ -72,25 +158,6 @@ type Bid struct {
 	BuilderFee  *big.Int
 
 	rawBid RawBid
-}
-
-func FromRawBid(bid *RawBid, builder common.Address, txs Transactions, payBidTxGasUsed uint64) *Bid {
-	b := &Bid{
-		Builder:     builder,
-		BlockNumber: bid.BlockNumber,
-		ParentHash:  bid.ParentHash,
-		Txs:         txs,
-		GasUsed:     bid.GasUsed + payBidTxGasUsed,
-		GasFee:      bid.GasFee,
-		BuilderFee:  big.NewInt(0),
-		rawBid:      *bid,
-	}
-
-	if bid.BuilderFee != nil {
-		b.BuilderFee = bid.BuilderFee
-	}
-
-	return b
 }
 
 // Hash returns the bid hash.

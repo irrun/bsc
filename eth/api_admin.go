@@ -139,7 +139,7 @@ func (api *AdminAPI) ImportChain(file string) (bool, error) {
 	return true, nil
 }
 
-// MevRunning returns true if mev is running
+// MevRunning returns true if the validator accept bids from builder
 func (api *AdminAPI) MevRunning() bool {
 	return api.eth.APIBackend.MevRunning()
 }

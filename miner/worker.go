@@ -1160,10 +1160,12 @@ LOOP:
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
 		if bestBid != nil && bestBid.packedBlockReward.Cmp(bestReward) > 0 {
-			localRewardForCoinbase := new(big.Int).Mul(bestReward, big.NewInt(w.config.Mev.ValidatorCommission))
-			localRewardForCoinbase.Div(localRewardForCoinbase, big.NewInt(10000))
+			// localValidatorReward is the reward for the validator self by the local block.
+			localValidatorReward := new(big.Int).Mul(bestReward, big.NewInt(w.config.Mev.ValidatorCommission))
+			localValidatorReward.Div(localValidatorReward, big.NewInt(10000))
 
-			if bestBid.packedValidatorReward.Cmp(localRewardForCoinbase) > 0 {
+			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
+			if bestBid.packedValidatorReward.Cmp(localValidatorReward) > 0 {
 				bestWork = bestBid.env
 			}
 		}

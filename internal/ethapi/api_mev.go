@@ -36,26 +36,26 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	}
 
 	var (
-		bid           = args.Bid
+		rawBid        = args.RawBid
 		currentHeader = m.b.CurrentHeader()
 	)
 
-	if bid == nil {
-		return common.Hash{}, types.NewInvalidBidError("bid should not be nil")
+	if rawBid == nil {
+		return common.Hash{}, types.NewInvalidBidError("rawBid should not be nil")
 	}
 
 	// only support bidding for the next block not for the future block
-	if bid.BlockNumber != currentHeader.Number.Uint64()+1 {
+	if rawBid.BlockNumber != currentHeader.Number.Uint64()+1 {
 		return common.Hash{}, types.NewInvalidBidError("stale block number or block in future")
 	}
 
-	if bid.ParentHash != currentHeader.Hash() {
+	if rawBid.ParentHash != currentHeader.Hash() {
 		return common.Hash{}, types.NewInvalidBidError(
 			fmt.Sprintf("non-aligned parent hash: %v", currentHeader.Hash()))
 	}
 
-	if bid.BuilderFee != nil {
-		builderFee := bid.BuilderFee
+	if rawBid.BuilderFee != nil {
+		builderFee := rawBid.BuilderFee
 		if builderFee.Cmp(common.Big0) < 0 {
 			return common.Hash{}, types.NewInvalidBidError("builder fee should not be less than 0")
 		}
@@ -66,7 +66,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 			}
 		}
 
-		if builderFee.Cmp(bid.GasFee) >= 0 {
+		if builderFee.Cmp(rawBid.GasFee) >= 0 {
 			return common.Hash{}, types.NewInvalidBidError("builder fee must be less than gas fee")
 		}
 

@@ -23,8 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/panjf2000/ants/v2"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -89,7 +87,6 @@ type Miner struct {
 	worker  *worker
 
 	bidSimulator *bidSimulator
-	antsPool     *ants.Pool
 
 	wg sync.WaitGroup
 }
@@ -104,12 +101,6 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
 	}
-	antsPool, err := ants.NewPool(MevRoutineLimit)
-	if err != nil {
-		// could never happen
-		panic(fmt.Sprintf("Miner: failed to create ants pool, %v", err))
-	}
-	miner.antsPool = antsPool
 
 	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, chainConfig, eth.BlockChain(), miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
@@ -203,7 +194,6 @@ func (miner *Miner) Stop() {
 }
 
 func (miner *Miner) Close() {
-	miner.antsPool.Release()
 	close(miner.exitCh)
 	miner.wg.Wait()
 }

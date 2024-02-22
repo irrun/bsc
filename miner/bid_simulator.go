@@ -2,7 +2,6 @@ package miner
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,6 +27,11 @@ const (
 	maxBidPerBuilderPerBlock = 3
 
 	commitInterruptBetterBid = 1
+
+	// leftOverTimeRate is the rate of left over time to simulate a bid
+	leftOverTimeRate = 11
+	// leftOverTimeScale is the scale of left over time to simulate a bid
+	leftOverTimeScale = 10
 )
 
 var (
@@ -45,7 +49,6 @@ var (
 		MaxIdleConnsPerHost: 50,
 		MaxConnsPerHost:     50,
 		IdleConnTimeout:     90 * time.Second,
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}
 
 	client = &http.Client{
@@ -132,7 +135,7 @@ func newBidSimulator(
 		b.dialSentryAndBuilders()
 
 		if len(b.builders) == 0 {
-			log.Warn("BidSimulator: no validReward builders")
+			log.Warn("BidSimulator: no valid builders")
 		}
 	}
 
@@ -195,8 +198,8 @@ func (b *bidSimulator) receivingBid() bool {
 }
 
 func (b *bidSimulator) startReceivingBid() {
-	b.bidReceiving.Store(true)
 	b.dialSentryAndBuilders()
+	b.bidReceiving.Store(true)
 }
 
 func (b *bidSimulator) stopReceivingBid() {
@@ -315,11 +318,8 @@ func (b *bidSimulator) newBidLoop() {
 		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
 			simDuration = lastBid.duration
 		}
-		// simulatingBid's duration is longer than bestBid's duration in most case
-		if lastBid := b.GetSimulatingBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
-			simDuration = lastBid.duration
-		}
-		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration {
+
+		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration*leftOverTimeRate/leftOverTimeScale {
 			return
 		}
 
@@ -449,28 +449,19 @@ func (b *bidSimulator) clearLoop() {
 
 // sendBid checks if the bid is already exists or if the builder sends too many bids,
 // if yes, return error, if not, add bid into newBid chan waiting for judge profit.
-func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
-	if !b.ExistBuilder(bid.Builder) {
-		return errors.New("builder is not registered")
+func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
+	timer := time.NewTimer(1 * time.Second)
+	defer timer.Stop()
+	select {
+	case b.newBidCh <- bid:
+		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
+		return nil
+	case <-timer.C:
+		return types.ErrMevBusy
 	}
-
-	err := b.pendingCheck(bid)
-	if err != nil {
-		return err
-	}
-
-	// pass checking, add bid into alternative chan waiting for judge profit
-	b.newBidCh <- bid
-
-	return nil
 }
 
-func (b *bidSimulator) pendingCheck(bid *types.Bid) error {
-	var (
-		builder     = bid.Builder
-		blockNumber = bid.BlockNumber
-	)
-
+func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, bidHash common.Hash) error {
 	b.pendingMu.Lock()
 	defer b.pendingMu.Unlock()
 
@@ -483,7 +474,7 @@ func (b *bidSimulator) pendingCheck(bid *types.Bid) error {
 		b.pending[blockNumber][builder] = make(map[common.Hash]struct{})
 	}
 
-	if _, ok := b.pending[blockNumber][builder][bid.Hash()]; ok {
+	if _, ok := b.pending[blockNumber][builder][bidHash]; ok {
 		return errors.New("bid already exists")
 	}
 
@@ -491,9 +482,14 @@ func (b *bidSimulator) pendingCheck(bid *types.Bid) error {
 		return errors.New("too many bids")
 	}
 
-	b.pending[blockNumber][builder][bid.Hash()] = struct{}{}
-
 	return nil
+}
+
+func (b *bidSimulator) AddPending(blockNumber uint64, builder common.Address, bidHash common.Hash) {
+	b.pendingMu.Lock()
+	defer b.pendingMu.Unlock()
+
+	b.pending[blockNumber][builder][bidHash] = struct{}{}
 }
 
 // simBid simulates a newBid with txs.
@@ -580,6 +576,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 		_, err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx)
 		if err != nil {
+			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
 			return
 		}
@@ -603,7 +600,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// TODO(renee-) opt bid comparation
+	// this is the simplest strategy: best for all the delegators.
 	if bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) > 0 {
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
@@ -647,7 +644,7 @@ func (r *BidRuntime) packReward(validatorCommission int64) {
 	r.packedBlockReward = r.env.state.GetBalance(consensus.SystemAddress)
 	r.packedValidatorReward = new(big.Int).Mul(r.packedBlockReward, big.NewInt(validatorCommission))
 	r.packedValidatorReward.Div(r.packedValidatorReward, big.NewInt(10000))
-	r.packedValidatorReward.Sub(r.packedBlockReward, r.bid.BuilderFee)
+	r.packedValidatorReward.Sub(r.packedValidatorReward, r.bid.BuilderFee)
 }
 
 func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction) (
