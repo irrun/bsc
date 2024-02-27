@@ -84,7 +84,7 @@ func (b *RawBid) DecodeTxs(signer Signer) ([]*Transaction, error) {
 		return []*Transaction{}, nil
 	}
 
-	txChan := make(chan int, TxDecodeConcurrencyForPerBid)
+	txChan := make(chan int, len(b.Txs))
 	bidTxs := make([]*Transaction, len(b.Txs))
 	decode := func(txBytes hexutil.Bytes) (*Transaction, error) {
 		tx := new(Transaction)
@@ -104,7 +104,13 @@ func (b *RawBid) DecodeTxs(signer Signer) ([]*Transaction, error) {
 	errChan := make(chan error, TxDecodeConcurrencyForPerBid)
 	for i := 0; i < TxDecodeConcurrencyForPerBid; i++ {
 		go func() {
-			for txIndex := range txChan {
+			for {
+				txIndex, ok := <-txChan
+				if !ok {
+					errChan <- nil
+					return
+				}
+
 				txBytes := b.Txs[txIndex]
 				tx, err := decode(txBytes)
 				if err != nil {
@@ -114,8 +120,6 @@ func (b *RawBid) DecodeTxs(signer Signer) ([]*Transaction, error) {
 
 				bidTxs[txIndex] = tx
 			}
-
-			errChan <- nil
 		}()
 	}
 
