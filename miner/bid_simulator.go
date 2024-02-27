@@ -160,19 +160,7 @@ func (b *bidSimulator) dialSentryAndBuilders() {
 	b.sentryCli = sentryCli
 
 	for _, v := range b.config.Builders {
-		var builderCli *builderclient.Client
-
-		if b.sentryCli != nil {
-			builderCli = b.sentryCli
-		} else {
-			builderCli, err = builderclient.DialOptions(context.Background(), v.URL, rpc.WithHTTPClient(client))
-			if err != nil {
-				log.Error("BidSimulator: failed to dial builder", "url", v.URL, "err", err)
-				continue
-			}
-		}
-
-		b.builders[v.Address] = builderCli
+		_ = b.AddBuilder(v.Address, v.URL)
 	}
 }
 
