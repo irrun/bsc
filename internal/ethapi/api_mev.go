@@ -54,6 +54,10 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 			fmt.Sprintf("non-aligned parent hash: %v", currentHeader.Hash()))
 	}
 
+	if rawBid.GasFee == nil || rawBid.GasFee.Cmp(common.Big0) == 0 || rawBid.GasUsed == 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty gasFee or empty gasUsed")
+	}
+
 	if rawBid.BuilderFee != nil {
 		builderFee := rawBid.BuilderFee
 		if builderFee.Cmp(common.Big0) < 0 {
@@ -71,9 +75,16 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		}
 
 		if builderFee.Cmp(common.Big0) > 0 {
-			if args.PayBidTxGasUsed >= TransferTxGasLimit {
+			// payBidTx can be nil when validator and builder take some other settlement
+
+			if args.PayBidTxGasUsed > TransferTxGasLimit {
 				return common.Hash{}, types.NewInvalidBidError(
-					fmt.Sprintf("transfer tx gas used must be less than %v", TransferTxGasLimit))
+					fmt.Sprintf("transfer tx gas used must be no more than %v", TransferTxGasLimit))
+			}
+
+			if (len(args.PayBidTx) == 0 && args.PayBidTxGasUsed != 0) ||
+				(len(args.PayBidTx) != 0 && args.PayBidTxGasUsed == 0) {
+				return common.Hash{}, types.NewInvalidPayBidTxError("non-aligned payBidTx and payBidTxGasUsed")
 			}
 		}
 	} else {
