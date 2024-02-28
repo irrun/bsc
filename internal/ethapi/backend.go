@@ -114,6 +114,8 @@ type Backend interface {
 	RemoveBuilder(builder common.Address) error
 	// SendBid receives bid from the builders.
 	SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error)
+	// BestBidGasFee returns the gas fee of the best bid for the given parent hash.
+	BestBidGasFee(parentHash common.Hash) *big.Int
 	// MinerInTurn returns true if the validator is in turn to propose the block.
 	MinerInTurn() bool
 }

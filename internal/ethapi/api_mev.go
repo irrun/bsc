@@ -3,6 +3,7 @@ package ethapi
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -94,6 +95,10 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	}
 
 	return m.b.SendBid(ctx, &args)
+}
+
+func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.Int {
+	return m.b.BestBidGasFee(parentHash)
 }
 
 // Running returns true if mev is running
