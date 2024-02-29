@@ -937,6 +937,10 @@ func (fb *filterBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event
 	return nullSubscription()
 }
 
+func (fb *filterBackend) SubscribeBestBidEvent(ch chan<- core.BestBidEvent) event.Subscription {
+	return fb.bc.SubscribeBestBidEvent(ch)
+}
+
 func (fb *filterBackend) BloomStatus() (uint64, uint64) { return 4096, 0 }
 
 func (fb *filterBackend) ServiceFilter(ctx context.Context, ms *bloombits.MatcherSession) {

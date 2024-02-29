@@ -448,3 +448,8 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEvent) event.Subscription {
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
 }
+
+// SubscribeBestBidEvent registers a subscription of BestBidEvent.
+func (bc *BlockChain) SubscribeBestBidEvent(ch chan<- BestBidEvent) event.Subscription {
+	return bc.scope.Track(bc.bestBidFeed.Subscribe(ch))
+}

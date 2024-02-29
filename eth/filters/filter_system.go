@@ -73,6 +73,7 @@ type Backend interface {
 	SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription
 	SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
+	SubscribeBestBidEvent(chan<- core.BestBidEvent) event.Subscription
 
 	BloomStatus() (uint64, uint64)
 	ServiceFilter(ctx context.Context, session *bloombits.MatcherSession)
@@ -169,6 +170,8 @@ const (
 	FinalizedHeadersSubscription
 	// LastIndexSubscription keeps track of the last index
 	LastIndexSubscription
+	// BestBidSubscription queries for best bid event
+	BestBidSubscription
 )
 
 const (
@@ -197,6 +200,7 @@ type subscription struct {
 	txs       chan []*types.Transaction
 	headers   chan *types.Header
 	votes     chan *types.VoteEnvelope
+	bid       chan *types.RawBid
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
 }
@@ -215,6 +219,7 @@ type EventSystem struct {
 	chainSub           event.Subscription // Subscription for new chain event
 	finalizedHeaderSub event.Subscription // Subscription for new finalized header
 	voteSub            event.Subscription // Subscription for new vote event
+	BidSub             event.Subscription // Subscription for best bid event
 
 	// Channels
 	install           chan *subscription             // install filter for event notification
@@ -226,6 +231,7 @@ type EventSystem struct {
 	chainCh           chan core.ChainEvent           // Channel to receive new chain event
 	finalizedHeaderCh chan core.FinalizedHeaderEvent // Channel to receive new finalized header event
 	voteCh            chan core.NewVoteEvent         // Channel to receive new vote event
+	bidCh             chan core.BestBidEvent         // Channel to receive best bid event
 }
 
 // NewEventSystem creates a new manager that listens for event on the given mux,
@@ -257,6 +263,7 @@ func NewEventSystem(sys *FilterSystem) *EventSystem {
 	m.pendingLogsSub = m.backend.SubscribePendingLogsEvent(m.pendingLogsCh)
 	m.finalizedHeaderSub = m.backend.SubscribeFinalizedHeaderEvent(m.finalizedHeaderCh)
 	m.voteSub = m.backend.SubscribeNewVoteEvent(m.voteCh)
+	m.BidSub = m.backend.SubscribeBestBidEvent(m.bidCh)
 
 	// Make sure none of the subscriptions are empty
 	if m.txsSub == nil || m.logsSub == nil || m.rmLogsSub == nil || m.chainSub == nil || m.pendingLogsSub == nil {
@@ -426,6 +433,22 @@ func (es *EventSystem) SubscribeNewHeads(headers chan *types.Header) *Subscripti
 	return es.subscribe(sub)
 }
 
+// SubscribeBestBids creates a subscription that writes the best bid of a block
+func (es *EventSystem) SubscribeBestBids(bid chan *types.RawBid) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       BestBidSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		txs:       make(chan []*types.Transaction),
+		votes:     make(chan *types.VoteEnvelope),
+		installed: make(chan struct{}),
+		bid:       bid,
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
 // SubscribeNewFinalizedHeaders creates a subscription that writes the finalized header of a block that is
 // reached recently.
 func (es *EventSystem) SubscribeNewFinalizedHeaders(headers chan *types.Header) *Subscription {
@@ -527,6 +550,12 @@ func (es *EventSystem) handleFinalizedHeaderEvent(filters filterIndex, ev core.F
 	}
 }
 
+func (es *EventSystem) handleBestBidEvent(filters filterIndex, ev core.BestBidEvent) {
+	for _, f := range filters[BestBidSubscription] {
+		f.bid <- ev.Bid
+	}
+}
+
 // eventLoop (un)installs filters and processes mux events.
 func (es *EventSystem) eventLoop() {
 	// Ensure all subscriptions get cleaned up
@@ -567,6 +596,8 @@ func (es *EventSystem) eventLoop() {
 			es.handleFinalizedHeaderEvent(index, ev)
 		case ev := <-es.voteCh:
 			es.handleVoteEvent(index, ev)
+		case ev := <-es.bidCh:
+			es.handleBestBidEvent(index, ev)
 
 		case f := <-es.install:
 			if f.typ == MinedAndPendingLogsSubscription {

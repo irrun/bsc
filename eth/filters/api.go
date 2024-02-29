@@ -310,6 +310,36 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 	return rpcSub, nil
 }
 
+// BestBids send a notification each time a new best bid is found.
+func (api *FilterAPI) BestBids(ctx context.Context) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
+
+	gopool.Submit(func() {
+		bids := make(chan *types.RawBid)
+		bidsSub := api.events.SubscribeBestBids(bids)
+
+		for {
+			select {
+			case b := <-bids:
+				notifier.Notify(rpcSub.ID, b)
+			case <-rpcSub.Err():
+				bidsSub.Unsubscribe()
+				return
+			case <-notifier.Closed():
+				bidsSub.Unsubscribe()
+				return
+			}
+		}
+	})
+
+	return rpcSub, nil
+}
+
 // NewFinalizedHeaderFilter creates a filter that fetches finalized headers that are reached.
 func (api *FilterAPI) NewFinalizedHeaderFilter() rpc.ID {
 	var (
