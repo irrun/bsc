@@ -73,7 +73,7 @@ var DefaultConfig = Config{
 	NewPayloadTimeout: 2 * time.Second,
 	DelayLeftOver:     50 * time.Millisecond,
 
-	Mev: MevConfig{Enabled: false},
+	Mev: DefaultMevConfig,
 }
 
 // Miner creates blocks and searches for proof-of-work values.

@@ -105,6 +105,8 @@ type Backend interface {
 
 	// MevRunning return true if mev is running
 	MevRunning() bool
+	// MevParams returns the static params of mev
+	MevParams() types.MevParams
 	// StartMev starts mev
 	StartMev()
 	// StopMev stops mev

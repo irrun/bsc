@@ -441,6 +441,10 @@ func (b *EthAPIBackend) MevRunning() bool {
 	return b.Miner().MevRunning()
 }
 
+func (b *EthAPIBackend) MevParams() types.MevParams {
+	return b.Miner().MevParams()
+}
+
 func (b *EthAPIBackend) StartMev() {
 	b.Miner().StartMev()
 }

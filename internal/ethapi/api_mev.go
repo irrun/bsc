@@ -101,6 +101,10 @@ func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.I
 	return m.b.BestBidGasFee(parentHash)
 }
 
+func (m *MevAPI) Params() types.MevParams {
+	return m.b.MevParams()
+}
+
 // Running returns true if mev is running
 func (m *MevAPI) Running() bool {
 	return m.b.MevRunning()

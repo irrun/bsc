@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -175,4 +176,10 @@ type BidIssue struct {
 	Builder   common.Address
 	BidHash   common.Hash
 	Message   string
+}
+
+type MevParams struct {
+	SentryURL             string // The url of Mev sentry
+	ValidatorCommission   int64  // 100 means 1%
+	BidSimulationLeftOver time.Duration
 }

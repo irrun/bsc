@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -395,8 +396,12 @@ func (b *bidSimulator) newBidLoop() {
 
 func (b *bidSimulator) bidMustBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	nextHeaderTimestamp := parentHeader.Time + b.chainConfig.Parlia.Period
-	return time.Unix(int64(nextHeaderTimestamp), 0).Add(-b.delayLeftOver)
+	return bidutil.BidMustBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver)
+}
+
+func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
+	parentHeader := b.chain.GetHeaderByHash(parentHash)
+	return bidutil.BidBetterBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver, b.config.BidSimulationLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {

@@ -16,11 +16,19 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled   bool            // Whether to enable Mev or not
-	SentryURL string          // The url of Mev sentry
-	Builders  []BuilderConfig // The list of builders
+	Enabled               bool            // Whether to enable Mev or not
+	SentryURL             string          // The url of Mev sentry
+	Builders              []BuilderConfig // The list of builders
+	ValidatorCommission   int64           // 100 means 1%
+	BidSimulationLeftOver time.Duration
+}
 
-	ValidatorCommission int64 // 100 means 1%
+var DefaultMevConfig = MevConfig{
+	Enabled:               false,
+	SentryURL:             "",
+	Builders:              nil,
+	ValidatorCommission:   100,
+	BidSimulationLeftOver: 100 * time.Millisecond,
 }
 
 // MevRunning return true if mev is running.
@@ -69,11 +77,11 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("fail to convert bidArgs to bid, %v", err))
 	}
 
-	bidMustBefore := miner.bidSimulator.bidMustBefore(bidArgs.RawBid.ParentHash)
-	timeout := time.Until(bidMustBefore)
+	bidBetterBefore := miner.bidSimulator.bidBetterBefore(bidArgs.RawBid.ParentHash)
+	timeout := time.Until(bidBetterBefore)
 
 	if timeout <= 0 {
-		return common.Hash{}, fmt.Errorf("too late, expected befor %s, appeared %s later", bidMustBefore,
+		return common.Hash{}, fmt.Errorf("too late, expected befor %s, appeared %s later", bidBetterBefore,
 			common.PrettyDuration(timeout))
 	}
 
@@ -93,4 +101,12 @@ func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
 	}
 
 	return bidRuntime.packedBlockReward
+}
+
+func (miner *Miner) MevParams() types.MevParams {
+	return types.MevParams{
+		SentryURL:             miner.worker.config.Mev.SentryURL,
+		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
+		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
+	}
 }
