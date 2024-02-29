@@ -153,11 +153,6 @@ func (b *testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.S
 	return b.voteFeed.Subscribe(ch)
 }
 
-func (b *testBackend) SubscribeBestBidEvent(events chan<- core.BestBidEvent) event.Subscription {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (b *testBackend) BloomStatus() (uint64, uint64) {
 	return params.BloomBitsBlocks, b.sections
 }

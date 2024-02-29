@@ -32,8 +32,6 @@ import (
 	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -58,6 +56,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
+	"golang.org/x/exp/slices"
 )
 
 var (
@@ -258,7 +257,6 @@ type BlockChain struct {
 	logsFeed            event.Feed
 	blockProcFeed       event.Feed
 	finalizedHeaderFeed event.Feed
-	bestBidFeed         event.Feed
 	scope               event.SubscriptionScope
 	genesisBlock        *types.Block
 
@@ -2640,10 +2638,6 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 	}
 	log.Info("Chain head was updated", context...)
 	return head.Hash(), nil
-}
-
-func (bc *BlockChain) SendBestBid(rawBid *types.RawBid) {
-	bc.bestBidFeed.Send(BestBidEvent{Bid: rawBid})
 }
 
 func (bc *BlockChain) updateFutureBlocks() {

@@ -243,12 +243,6 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	defer b.bestBidMu.Unlock()
 
 	b.bestBid[prevBlockHash] = bid
-
-	b.chain.SendBestBid(&types.RawBid{
-		BlockNumber: bid.bid.BlockNumber,
-		ParentHash:  bid.bid.ParentHash,
-		GasFee:      bid.packedBlockReward,
-	})
 }
 
 func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {

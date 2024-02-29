@@ -506,9 +506,6 @@ func (b testBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeade
 func (b testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) SubscribeBestBidEvent(ch chan<- core.BestBidEvent) event.Subscription {
-	panic("implement me")
-}
 func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	panic("implement me")
 }
@@ -562,10 +559,6 @@ func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.H
 	panic("implement me")
 }
 func (b *testBackend) MinerInTurn() bool { return false }
-func (b *testBackend) BestBidGasFee(parentHash common.Hash) *big.Int {
-	//TODO implement me
-	panic("implement me")
-}
 
 func TestEstimateGas(t *testing.T) {
 	t.Parallel()
