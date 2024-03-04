@@ -478,8 +478,8 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 		var ctx []interface{}
 		ctx = append(ctx, "reqid", idForLog{msg.ID}, "duration", time.Since(start))
 		if resp.Error != nil {
-			xForward := reqCtx.Value("X-Forwarded-For")
-			h.log.Warn("Served "+msg.Method, "reqid", idForLog{msg.ID}, "t", time.Since(start), "err", resp.Error.Message, "X-Forwarded-For", xForward)
+			//xForward := reqCtx.Value("X-Forwarded-For")
+			//h.log.Warn("Served "+msg.Method, "reqid", idForLog{msg.ID}, "t", time.Since(start), "err", resp.Error.Message, "X-Forwarded-For", xForward)
 
 			monitoredError := "sender or to in black list" // using legacypool.ErrInBlackList.Error() will cause `import cycle`
 			if strings.Contains(resp.Error.Message, monitoredError) {
