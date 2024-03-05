@@ -105,7 +105,6 @@ func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
 
 func (miner *Miner) MevParams() types.MevParams {
 	return types.MevParams{
-		SentryURL:             miner.worker.config.Mev.SentryURL,
 		ValidatorCommission:   miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: miner.worker.config.Mev.BidSimulationLeftOver,
 	}

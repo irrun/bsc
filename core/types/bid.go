@@ -179,7 +179,6 @@ type BidIssue struct {
 }
 
 type MevParams struct {
-	SentryURL             string // The url of Mev sentry
-	ValidatorCommission   int64  // 100 means 1%
+	ValidatorCommission   int64 // 100 means 1%
 	BidSimulationLeftOver time.Duration
 }

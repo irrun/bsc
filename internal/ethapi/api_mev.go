@@ -97,8 +97,8 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	return m.b.SendBid(ctx, &args)
 }
 
-func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.Int {
-	return m.b.BestBidGasFee(parentHash)
+func (m *MevAPI) BestBidGasFeeAfter(_ context.Context, parentHash common.Hash) *big.Int {
+	return m.b.BestBidGasFeeAfter(parentHash)
 }
 
 func (m *MevAPI) Params() types.MevParams {
