@@ -1068,6 +1068,8 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
 	if bidTxs != nil {
+		log.Debug("BidSimulator: greedy merge mempool before filter", "tx_count", len(pendingPlainTxs)+len(pendingBlobTxs))
+
 		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {
 			for acc, txs := range commonTxs {
 				for i := len(txs) - 1; i >= 0; i-- {
@@ -1085,6 +1087,8 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 
 		filterBidTxs(pendingPlainTxs)
 		filterBidTxs(pendingBlobTxs)
+
+		log.Debug("BidSimulator: greedy merge mempool after filter", "tx_count", len(pendingPlainTxs)+len(pendingBlobTxs))
 	}
 
 	// Split the pending transactions into locals and remotes.

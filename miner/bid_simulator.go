@@ -617,7 +617,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
-			log.Debug("BidSimulator: greedy merge tx stopTimer", "block", bidRuntime.env.header.Number,
+			log.Debug("BidSimulator: greedy merge stopTimer", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder,
 				"header time", time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0)),
 				"commit delay", *delay, "DelayLeftOver", b.delayLeftOver)
@@ -630,7 +630,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
-			log.Info("BidSimulator: greedy merge tx fill transactions", "block", bidRuntime.env.header.Number,
+			log.Info("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
