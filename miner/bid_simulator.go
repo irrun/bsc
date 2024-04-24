@@ -251,6 +251,8 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
+	log.Debug("BidSimulator: set best bid", "block", bid.bid.BlockNumber, "builder", bid.bid.Builder,
+		"blockReward", bid.packedBlockReward, "validatorReward", bid.packedValidatorReward)
 	b.bestBid[prevBlockHash] = bid
 }
 
@@ -311,7 +313,7 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
-		log.Debug("BidSimulator: start", "bidHash", bidRuntime.bid.Hash().Hex())
+		log.Debug("BidSimulator: start", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 
 		// if the left time is not enough to do simulation, return
 		var simDuration time.Duration
@@ -320,7 +322,8 @@ func (b *bidSimulator) newBidLoop() {
 		}
 
 		if time.Until(b.bidMustBefore(bidRuntime.bid.ParentHash)) <= simDuration*leftOverTimeRate/leftOverTimeScale {
-			log.Debug("BidSimulator: abort commit, not enough time to simulate", "bidHash", bidRuntime.bid.Hash().Hex())
+			log.Debug("BidSimulator: abort commit, not enough time to simulate",
+				"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			return
 		}
 
@@ -352,7 +355,8 @@ func (b *bidSimulator) newBidLoop() {
 
 			if expectedValidatorReward.Cmp(big.NewInt(0)) < 0 {
 				// damage self profit, ignore
-				log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore", "bidHash", newBid.Hash().Hex())
+				log.Debug("BidSimulator: invalid bid, validator reward is less than 0, ignore",
+					"builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
 				continue
 			}
 
@@ -382,7 +386,8 @@ func (b *bidSimulator) newBidLoop() {
 					continue
 				}
 
-				log.Debug("BidSimulator: lower reward, ignore", "bidHash", newBid.Hash().Hex())
+				log.Debug("BidSimulator: lower reward, ignore",
+					"builder", bidRuntime.bid.Builder, "bidHash", newBid.Hash().Hex())
 				continue
 			}
 
@@ -394,7 +399,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			log.Debug("BidSimulator: lower reward, ignore", "bidHash", newBid.Hash().Hex())
+			log.Debug("BidSimulator: lower reward, ignore", "builder", newBid.Builder, "bidHash", newBid.Hash().Hex())
 		case <-b.exitCh:
 			return
 		}
@@ -613,6 +618,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
 			log.Debug("BidSimulator: greedy merge tx stopTimer", "block", bidRuntime.env.header.Number,
+				"builder", bidRuntime.bid.Builder,
 				"header time", time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0)),
 				"commit delay", *delay, "DelayLeftOver", b.delayLeftOver)
 
@@ -625,7 +631,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
 			log.Info("BidSimulator: greedy merge tx fill transactions", "block", bidRuntime.env.header.Number,
-				"tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
+				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
 			bidRuntime.packReward(b.config.ValidatorCommission)
@@ -635,7 +641,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx)
 	if err != nil {
-		log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
+		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
+			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
 		err = fmt.Errorf("invalid tx in bid, %v", err)
 		return
 	}
