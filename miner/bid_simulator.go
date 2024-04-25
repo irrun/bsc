@@ -660,7 +660,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// this is the simplest strategy: best for all the delegators.
-	if bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) > 0 {
+	if bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0 {
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
