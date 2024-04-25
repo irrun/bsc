@@ -550,16 +550,17 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			go b.reportIssue(bidRuntime, err)
 		}
 
+		b.RemoveSimulatingBid(parentHash)
+		bidSimTimer.UpdateSince(start)
+
 		if success {
 			bidRuntime.duration = time.Since(simStart)
+
 			if len(b.newBidCh) == 0 {
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 				b.newBidCh <- bidRuntime.bid
 			}
 		}
-
-		b.RemoveSimulatingBid(parentHash)
-		bidSimTimer.UpdateSince(start)
 	}(time.Now())
 
 	// prepareWork will configure header with a suitable time according to consensus
