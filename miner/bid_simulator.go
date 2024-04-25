@@ -313,8 +313,6 @@ func (b *bidSimulator) newBidLoop() {
 
 	// commit aborts in-flight bid execution with given signal and resubmits a new one.
 	commit := func(reason int32, bidRuntime *BidRuntime) {
-		log.Debug("BidSimulator: start", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-
 		// if the left time is not enough to do simulation, return
 		var simDuration time.Duration
 		if lastBid := b.GetBestBid(bidRuntime.bid.ParentHash); lastBid != nil && lastBid.duration != 0 {
@@ -335,6 +333,7 @@ func (b *bidSimulator) newBidLoop() {
 		interruptCh = make(chan int32, 1)
 		select {
 		case b.simBidCh <- &simBidReq{interruptCh: interruptCh, bid: bidRuntime}:
+			log.Debug("BidSimulator: commit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 		case <-b.exitCh:
 			return
 		}
@@ -379,8 +378,8 @@ func (b *bidSimulator) newBidLoop() {
 				}
 
 				// if bestBid is not nil, check if newBid is better than bestBid
-				if bidRuntime.expectedBlockReward.Cmp(bestBid.expectedBlockReward) > 0 &&
-					bidRuntime.expectedValidatorReward.Cmp(bestBid.expectedValidatorReward) > 0 {
+				if bidRuntime.expectedBlockReward.Cmp(bestBid.expectedBlockReward) >= 0 &&
+					bidRuntime.expectedValidatorReward.Cmp(bestBid.expectedValidatorReward) >= 0 {
 					// if both reward are better than last simulating newBid, commit for simulation
 					commit(commitInterruptBetterBid, bidRuntime)
 					continue
@@ -392,8 +391,8 @@ func (b *bidSimulator) newBidLoop() {
 			}
 
 			// simulatingBid must be better than bestBid, if newBid is better than simulatingBid, commit for simulation
-			if bidRuntime.expectedBlockReward.Cmp(simulatingBid.expectedBlockReward) > 0 &&
-				bidRuntime.expectedValidatorReward.Cmp(simulatingBid.expectedValidatorReward) > 0 {
+			if bidRuntime.expectedBlockReward.Cmp(simulatingBid.expectedBlockReward) >= 0 &&
+				bidRuntime.expectedValidatorReward.Cmp(simulatingBid.expectedValidatorReward) >= 0 {
 				// if both reward are better than last simulating newBid, commit for simulation
 				commit(commitInterruptBetterBid, bidRuntime)
 				continue
@@ -553,6 +552,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 		if success {
 			bidRuntime.duration = time.Since(simStart)
+			if len(b.newBidCh) == 0 {
+				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
+				b.newBidCh <- bidRuntime.bid
+			}
 		}
 
 		b.RemoveSimulatingBid(parentHash)
