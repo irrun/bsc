@@ -82,7 +82,7 @@ type RawBid struct {
 	BlockNumber  uint64          `json:"blockNumber"`
 	ParentHash   common.Hash     `json:"parentHash"`
 	Txs          []hexutil.Bytes `json:"txs"`
-	UnRevertible []common.Hash   `json:"unRevertible"`
+	UnRevertible []common.Hash   `json:"unRevertible,omitempty"`
 	GasUsed      uint64          `json:"gasUsed"`
 	GasFee       *big.Int        `json:"gasFee"`
 	BuilderFee   *big.Int        `json:"builderFee"`
