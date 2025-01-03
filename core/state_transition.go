@@ -499,7 +499,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		// Execute the transaction's call.
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 		if vmerr != nil {
-			log.Debug("BidSimulator: pay bid err", "err", vmerr)
+			log.Error("BidSimulator: pay bid err", "err", vmerr)
 		}
 	}
 
