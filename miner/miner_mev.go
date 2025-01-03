@@ -71,6 +71,8 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 			common.PrettyDuration(timeout))
 	}
 
+	log.Error("BidSimulator: receive bid 2")
+
 	err = miner.bidSimulator.sendBid(ctx, bid)
 
 	if err != nil {

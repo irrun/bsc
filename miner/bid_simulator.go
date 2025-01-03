@@ -332,6 +332,7 @@ func (b *bidSimulator) newBidLoop() {
 		interruptCh = make(chan int32, 1)
 		select {
 		case b.simBidCh <- &simBidReq{interruptCh: interruptCh, bid: bidRuntime}:
+			log.Error("BidSimulator: receive bid 4")
 			log.Debug("BidSimulator: commit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 		case <-b.exitCh:
 			return
@@ -345,6 +346,7 @@ func (b *bidSimulator) newBidLoop() {
 	for {
 		select {
 		case newBid := <-b.newBidCh:
+			log.Error("BidSimulator: receive bid 3")
 			if !b.isRunning() {
 				continue
 			}
@@ -496,6 +498,7 @@ func (b *bidSimulator) AddPending(blockNumber uint64, builder common.Address, bi
 // simBid simulates a newBid with txs.
 // simBid does not enable state prefetching when commit transaction.
 func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
+	log.Error("BidSimulator: receive bid 5")
 	// prevent from stopping happen in time interval from sendBid to simBid
 	if !b.isRunning() || !b.receivingBid() {
 		return

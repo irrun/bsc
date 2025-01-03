@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -76,6 +77,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 			fmt.Sprintf("transfer tx gas used must be no more than %v", params.PayBidTxGasLimit))
 	}
 
+	log.Error("BidSimulator: receive bid 1")
 	return m.b.SendBid(ctx, &args)
 }
 
